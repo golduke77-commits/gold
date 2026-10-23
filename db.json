@@ -1,0 +1,322 @@
+{
+  "store": {
+    "name": "Golduke Joyería",
+    "legalName": "Golduke Joyería S.A.S.",
+    "nit": "901.888.777-1",
+    "phone": "+57 300 123 4567",
+    "email": "contacto@golduke.com",
+    "address": "Centro Comercial Joyero, Local 101",
+    "city": "Medellín, Colombia",
+    "currency": "COP",
+    "receiptHeader": "GOLDUKE JOYERÍA S.A.S.\nNIT: 901.888.777-1\nAlta Joyería & Metales Finos",
+    "receiptFooter": "¡Gracias por su compra en Golduke!\nConserve este comprobante para su garantía.",
+    "cashInBox": 0,
+    "shiftStatus": "Cerrado",
+    "shiftStartTime": "08:00 AM",
+    "taxRate": 0,
+    "thermalPrinterWidth": "80mm",
+    "autoPrintReceipt": true,
+    "theme": "luxury-dark",
+    "accentColor": "#D97706",
+    "branding": {
+      "primaryColor": "#0284c7",
+      "secondaryColor": "#0d9488",
+      "fontHeading": "Inter",
+      "fontBody": "Outfit"
+    },
+    "metalRates": {
+      "oro18k": 500000,
+      "oro18kItaliano": 500000,
+      "oro14k": 430000,
+      "oro18kNacional": 430000,
+      "balineria": 410000,
+      "plata925": 410000
+    }
+  },
+  "kpis": {
+    "salesToday": 0,
+    "salesTrend": "0%",
+    "transactionsToday": 0,
+    "txTrend": "0%",
+    "inventoryValue": 0,
+    "avgCostPerGram": 0,
+    "avgCostGrams": 0,
+    "skusCount": 0,
+    "totalGrams": 0,
+    "netMargin": "0%",
+    "marginTrend": "0%",
+    "totalCustomers": 0,
+    "totalSuppliers": 0,
+    "activeServices": 0,
+    "totalAssetsValue": 0
+  },
+  "users": [
+    {
+      "id": "USR-001",
+      "name": "Administrador Golduke",
+      "email": "admin@golduke.com",
+      "role": "Super Admin",
+      "status": "Active",
+      "lastLogin": "Ahora mismo",
+      "password": "admin123",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+      "customPermissions": null
+    }
+  ],
+  "customers": [],
+  "suppliers": [],
+  "perfiles": [
+    {
+      "id": "PRF-001",
+      "name": "Super Admin",
+      "permissions": "Acceso total sin restricciones: Gestión Global, Usuarios, Ajustes, Inventario, Finanzas y POS",
+      "usersCount": 2,
+      "badgeColor": "#F59E0B",
+      "allowedModules": [
+        "*"
+      ]
+    },
+    {
+      "id": "PRF-002",
+      "name": "Gerente de Tienda Regional",
+      "permissions": "Acceso total a finanzas y reportes",
+      "usersCount": 0,
+      "allowedModules": [
+        "pos",
+        "ventas",
+        "clientes",
+        "creditos_clientes",
+        "comprar",
+        "proveedores",
+        "creditos_proveedores",
+        "productos",
+        "servicios",
+        "categorias",
+        "gastos",
+        "formas_pago",
+        "cuadre_caja",
+        "abonos_ventas",
+        "abonos_compras",
+        "reports",
+        "perfiles",
+        "config"
+      ]
+    },
+    {
+      "id": "PRF-003",
+      "name": "Cajero",
+      "permissions": "Ventas en POS, Cobros, Apertura y Cierre de Caja Chica",
+      "usersCount": 2,
+      "allowedModules": [
+        "dashboard",
+        "pos",
+        "ventas",
+        "clientes",
+        "creditos_clientes",
+        "productos",
+        "formas_pago",
+        "cuadre_caja"
+      ]
+    }
+  ],
+  "expenses": [],
+  "paymentMethods": [
+    {
+      "id": "PM-001",
+      "name": "CUENTA CHARLES JOYAS SAS",
+      "icon": "card",
+      "fee": "7%",
+      "active": true
+    },
+    {
+      "id": "PM-002",
+      "name": "CUENTA BANCARIA CARLOS",
+      "icon": "card",
+      "fee": "0%",
+      "active": true
+    },
+    {
+      "id": "PM-003",
+      "name": "PLAN SEPARE",
+      "icon": "card",
+      "fee": "0%",
+      "active": true
+    },
+    {
+      "id": "PM-004",
+      "name": "EFECTIVO",
+      "icon": "cash",
+      "fee": "0%",
+      "active": true
+    },
+    {
+      "id": "PM-005",
+      "name": "Tarjeta Débito/Crédito",
+      "icon": "card",
+      "fee": "0.8%",
+      "active": true
+    },
+    {
+      "id": "PM-006",
+      "name": "Bizum / Pago QR",
+      "icon": "qr",
+      "fee": "0%",
+      "active": true
+    },
+    {
+      "id": "PM-007",
+      "name": "Crédito Cliente",
+      "icon": "credit",
+      "fee": "0%",
+      "active": true
+    },
+    {
+      "id": "PM-008",
+      "name": "Transferencia Bancaria CTA ZHARICK",
+      "icon": "bank",
+      "fee": "0%",
+      "active": true
+    }
+  ],
+  "purchases": [],
+  "customerCredits": [],
+  "supplierCredits": [],
+  "services": [],
+  "categories": [
+    {
+      "id": "esmeraldas",
+      "name": "ESMERALDAS",
+      "type": "general",
+      "itemsCount": 0,
+      "color": "#6366f1",
+      "availableGrams": 0,
+      "cost": 1398000,
+      "totalValuation": 8429940
+    },
+    {
+      "id": "manillastejidas",
+      "name": "manillas tejidas",
+      "type": "extras",
+      "isExtra": true,
+      "measureType": "Unidades",
+      "itemsCount": 0,
+      "color": "#6366f1",
+      "availableUnits": 50,
+      "availableGrams": 0,
+      "cost": 6000,
+      "totalValuation": 300000
+    },
+    {
+      "id": "oro18k",
+      "name": "Oro 18K Italiano & Ley",
+      "icon": "✨",
+      "color": "#f59e0b",
+      "cost": 439117.4,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 115527396.96
+    },
+    {
+      "id": "nacional",
+      "name": "NACIONAL",
+      "icon": "💎",
+      "color": "#6366f1",
+      "cost": 401457.95,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 270976084.56
+    },
+    {
+      "id": "broches",
+      "name": "BROCHES",
+      "icon": "🔒",
+      "color": "#10B981",
+      "cost": 440000,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 0
+    },
+    {
+      "id": "roscas",
+      "name": "ROSCA SEGURIDAD",
+      "icon": "🔘",
+      "color": "#ec4899",
+      "cost": 400000,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 0
+    },
+    {
+      "id": "pircing",
+      "name": "PIRCING",
+      "icon": "👂",
+      "color": "#8B5CF6",
+      "cost": 80023.29,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 368107.12
+    },
+    {
+      "id": "bolas",
+      "name": "Bolas",
+      "icon": "🟡",
+      "color": "#F97316",
+      "cost": 330000,
+      "availableGrams": 0,
+      "itemsCount": 0,
+      "totalValuation": 18714300
+    }
+  ],
+  "products": [],
+  "assets": [],
+  "cashShiftLog": {
+    "shiftId": "TURNO-001",
+    "openedAt": "08:00 AM",
+    "openingCash": 0,
+    "cashSales": 0,
+    "cardSales": 0,
+    "qrSales": 0,
+    "cashExpenses": 0,
+    "expectedCashInDrawer": 0,
+    "actualCashInDrawer": 0,
+    "discrepancy": 0,
+    "status": "Cerrado"
+  },
+  "cashShiftsHistory": [],
+  "abonosVentas": [],
+  "abonosCompras": [],
+  "balanceSheet": {
+    "assetsCurrent": 0,
+    "assetsFixed": 0,
+    "totalAssets": 0,
+    "liabilitiesShort": 0,
+    "liabilitiesLong": 0,
+    "totalLiabilities": 0,
+    "netEquity": 0
+  },
+  "stockRadarData": [],
+  "recentTransactions": [],
+  "financialLedger": [],
+  "chartData": {
+    "salesLabels": [
+      "Lun",
+      "Mar",
+      "Mie",
+      "Jue",
+      "Vie",
+      "Sab",
+      "Dom"
+    ],
+    "salesValues": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "updatedAt": "2026-10-23T19:25:30.801Z",
+  "sales": []
+}
