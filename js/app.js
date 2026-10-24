@@ -685,8 +685,8 @@ class NexusApp {
           const dbTime = new Date(dbData.updatedAt || 0).getTime();
           const localTime = new Date(localData?.updatedAt || 0).getTime();
 
-          // If local data is strictly newer by more than 2s (e.g. user created entities while DB was syncing), preserve local data and re-sync
-          if (localData && localData.products && localTime > dbTime + 2000) {
+          // If local data is strictly newer by more than 2s and non-empty (e.g. user created entities while DB was syncing), preserve local data and re-sync
+          if (localData && Array.isArray(localData.products) && localData.products.length > 0 && localTime > dbTime + 2000) {
             console.log('[NexusApp] LocalStorage tiene datos más recientes que el servidor. Preservando estado local y re-sincronizando...');
             this.data = Object.assign({}, INITIAL_DATA, localData);
             this.data.store = Object.assign({}, INITIAL_DATA.store, localData.store || {});
