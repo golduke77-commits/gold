@@ -52,27 +52,40 @@ const INITIAL_DATA = {
 
   // 1. DASHBOARD SUB-MODAL DATA & ROLES (SUPER ADMIN NEXUS & ADMIN GOLDUKE)
   users: [
-    { 
-      id: "USR-001", 
-      name: "Nexus", 
-      email: "nexus@golduke.com", 
-      password: "admin123",
-      role: "Super Admin", 
-      status: "Active", 
-      lastLogin: "Hoy 08:15 AM",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80"
+    {
+        "id": "USR-001",
+        "name": "Nexus",
+        "email": "nexus@golduke.com",
+        "role": "Super Admin",
+        "status": "Active",
+        "lastLogin": "Ahora mismo",
+        "password": "admin123",
+        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+        "customPermissions": null
     },
-    { 
-      id: "USR-002", 
-      name: "Golduke", 
-      email: "admin@golduke.com", 
-      password: "admin123",
-      role: "Administrador", 
-      status: "Active", 
-      lastLogin: "Hoy 08:15 AM",
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80"
+    {
+        "id": "USR-002",
+        "name": "Golduke",
+        "email": "admin@golduke.com",
+        "role": "Administrador",
+        "status": "Active",
+        "lastLogin": "Ahora mismo",
+        "password": "admin123",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "customPermissions": null
+    },
+    {
+        "id": "USR-003",
+        "name": "Salome Duke",
+        "email": "Goldukeoficial@gmail.com",
+        "password": "GOLDuke2024",
+        "role": "Super Admin",
+        "status": "Active",
+        "lastLogin": "Ahora mismo",
+        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+        "customPermissions": null
     }
-  ],
+],
 
   customers: [],
   suppliers: [],

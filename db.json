@@ -75,6 +75,17 @@
       "password": "admin123",
       "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
       "customPermissions": null
+    },
+    {
+      "id": "USR-003",
+      "name": "Salome Duke",
+      "email": "Goldukeoficial@gmail.com",
+      "password": "GOLDuke2024",
+      "role": "Super Admin",
+      "status": "Active",
+      "lastLogin": "Ahora mismo",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+      "customPermissions": null
     }
   ],
   "customers": [],
@@ -84,7 +95,7 @@
       "id": "PRF-001",
       "name": "Super Admin",
       "permissions": "Acceso total sin restricciones: Gestión Global, Usuarios, Ajustes, Inventario, Finanzas y POS",
-      "usersCount": 1,
+      "usersCount": 2,
       "badgeColor": "#F59E0B",
       "allowedModules": [
         "*"
@@ -271,6 +282,6 @@
       0
     ]
   },
-  "updatedAt": "2026-10-24T22:49:16.271Z",
+  "updatedAt": "2026-10-24T22:53:54.040Z",
   "sales": []
 }
