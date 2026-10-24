@@ -38,9 +38,9 @@
   },
   "kpis": {
     "salesToday": 0,
-    "salesTrend": "0%",
+    "salesTrend": "0.0%",
     "transactionsToday": 0,
-    "txTrend": "0%",
+    "txTrend": "0.0%",
     "inventoryValue": 196463200,
     "avgCostPerGram": 425282,
     "avgCostGrams": 461.96,
@@ -170,13 +170,13 @@
       "id": "PM-001",
       "name": "CUENTA GOLDUKE JOYERÍA SAS",
       "icon": "card",
-      "fee": "7%",
+      "fee": "0%",
       "active": true
     },
     {
       "id": "PM-002",
-      "name": "CUENTA BANCARIA CARLOS",
-      "icon": "card",
+      "name": "Transferencia Bancaria Golduke",
+      "icon": "bank",
       "fee": "0%",
       "active": true
     },
@@ -198,12 +198,12 @@
       "id": "PM-005",
       "name": "Tarjeta Débito/Crédito",
       "icon": "card",
-      "fee": "0.8%",
+      "fee": "0%",
       "active": true
     },
     {
       "id": "PM-006",
-      "name": "Bizum / Pago QR",
+      "name": "Nequi / Pago QR",
       "icon": "qr",
       "fee": "0%",
       "active": true
@@ -212,13 +212,6 @@
       "id": "PM-007",
       "name": "Crédito Cliente",
       "icon": "credit",
-      "fee": "0%",
-      "active": true
-    },
-    {
-      "id": "PM-008",
-      "name": "Transferencia Bancaria CTA ZHARICK",
-      "icon": "bank",
       "fee": "0%",
       "active": true
     }
@@ -6086,6 +6079,6 @@
       0
     ]
   },
-  "updatedAt": "2026-10-24T22:28:49.476Z",
+  "updatedAt": "2026-10-24T22:39:31.670Z",
   "sales": []
 }

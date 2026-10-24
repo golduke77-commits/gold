@@ -423,7 +423,7 @@
       <div class="sidebar-footer">
         <img id="sidebar-user-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" alt="Usuario" class="user-avatar" onclick="app.openChangeMyPasswordModal()" style="cursor:pointer;" title="Cambiar Mi Contraseña">
         <div class="user-info" onclick="app.openChangeMyPasswordModal()" style="cursor:pointer;" title="Cambiar Mi Contraseña">
-          <div id="sidebar-user-name" class="user-name">Carlos Mendoza</div>
+          <div id="sidebar-user-name" class="user-name">Golduke</div>
           <div id="sidebar-user-role" class="user-role">Super Admin</div>
         </div>
         <button class="user-action-btn" title="Cambiar Mi Contraseña" onclick="app.openChangeMyPasswordModal()" style="margin-right:2px;">
@@ -497,10 +497,10 @@
                   <span class="kpi-title">Ventas Totales Hoy</span>
                   <div class="kpi-icon-wrap kpi-icon-indigo">$</div>
                 </div>
-                <div class="kpi-value" id="kpi-sales">$ 4.820,50 COP</div>
+                <div class="kpi-value" id="kpi-sales">$ 0 COP</div>
                 <div class="kpi-footer">
-                  <span class="badge-trend badge-trend-up">↑ 14.2%</span>
-                  <span style="color:var(--text-muted);">vs. ayer ($ 4.220,00 COP)</span>
+                  <span class="badge-trend badge-trend-up" id="kpi-sales-trend">0.0%</span>
+                  <span style="color:var(--text-muted);" id="kpi-sales-sub">vs. ayer ($ 0 COP)</span>
                 </div>
               </div>
 
@@ -509,10 +509,10 @@
                   <span class="kpi-title">Transacciones Hoy</span>
                   <div class="kpi-icon-wrap kpi-icon-emerald">🧾</div>
                 </div>
-                <div class="kpi-value" id="kpi-tx">142</div>
+                <div class="kpi-value" id="kpi-tx">0</div>
                 <div class="kpi-footer">
-                  <span class="badge-trend badge-trend-up">↑ 8.5%</span>
-                  <span style="color:var(--text-muted);">Ticket Promedio: $ 33,94 COP</span>
+                  <span class="badge-trend badge-trend-up" id="kpi-tx-trend">0.0%</span>
+                  <span style="color:var(--text-muted);" id="kpi-tx-sub">Ticket Promedio: $ 0 COP</span>
                 </div>
               </div>
 
@@ -521,10 +521,10 @@
                   <span class="kpi-title">Costo General de Inventario</span>
                   <div class="kpi-icon-wrap kpi-icon-amber">📦</div>
                 </div>
-                <div class="kpi-value" id="kpi-inv-val">$ 0,00 COP</div>
+                <div class="kpi-value" id="kpi-inv-val">$ 0 COP</div>
                 <div class="kpi-footer">
                   <span class="badge-trend badge-trend-up">⚖️ Costo Real</span>
-                  <span style="color:var(--text-muted);" id="kpi-skus-cnt">18 Códigos activos</span>
+                  <span style="color:var(--text-muted);" id="kpi-skus-cnt">0 Códigos activos</span>
                 </div>
               </div>
 
@@ -2898,12 +2898,12 @@
           <div id="pos-add-price-cost-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-top:0.65rem; padding-top:0.65rem; border-top:1px dashed var(--border-color);">
             <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; padding:0.5rem 0.65rem;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.02em;">🏷️ Precio Base / Catálogo</div>
-              <div id="pos-add-base-price-display" style="font-size:0.95rem; font-weight:800; color:var(--brand-primary); margin-top:2px;">$ 450.000 COP / g</div>
+              <div id="pos-add-base-price-display" style="font-size:0.95rem; font-weight:800; color:var(--brand-primary); margin-top:2px;">$ 0 COP / g</div>
               <div id="pos-add-base-price-sub" style="font-size:0.68rem; color:var(--text-subtle); margin-top:1px;">Precio sugerido de lista</div>
             </div>
             <div id="pos-add-cost-box" style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; padding:0.5rem 0.65rem;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.02em;">💰 Costo Reposición (Base)</div>
-              <div id="pos-add-cost-display" style="font-size:0.95rem; font-weight:800; color:#D97706; margin-top:2px;">$ 444.000 COP / g</div>
+              <div id="pos-add-cost-display" style="font-size:0.95rem; font-weight:800; color:#D97706; margin-top:2px;">$ 0 COP / g</div>
               <div id="pos-add-cost-sub" style="font-size:0.68rem; color:var(--text-subtle); margin-top:1px;">Costo base de categoría</div>
             </div>
           </div>
@@ -3358,11 +3358,11 @@
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">Nombre Completo</label>
-            <input type="text" id="user-name-input" class="form-input" placeholder="ej. Carlos Mendoza" required>
+            <input type="text" id="user-name-input" class="form-input" placeholder="ej. Golduke" required>
           </div>
           <div class="form-group">
             <label class="form-label">Correo Electrónico</label>
-            <input type="email" id="user-email-input" class="form-input" placeholder="carlos@nexuspos.io" required>
+            <input type="email" id="user-email-input" class="form-input" placeholder="admin@golduke.com" required>
           </div>
           <div class="form-group">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
@@ -4802,7 +4802,7 @@
         <div class="modal-body">
           <div style="background:var(--canvas-bg); padding:0.9rem; border-radius:var(--radius-md); margin-bottom:1rem; border:1px solid var(--border-color);">
             <div class="text-xs" style="color:var(--text-muted); margin-bottom:0.25rem;">Cajero / Operador responsable:</div>
-            <strong id="open-cash-operator-name" style="font-size:1.05rem; color:var(--text-main);">Carlos Mendoza</strong>
+            <strong id="open-cash-operator-name" style="font-size:1.05rem; color:var(--text-main);">Golduke</strong>
           </div>
 
           <!-- MONTO BASE EN EFECTIVO -->
@@ -4854,7 +4854,7 @@
           <div id="open-cash-summary-box" style="background:var(--canvas-bg); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:0.8rem 1rem; font-size:0.86rem;">
             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
               <span style="color:var(--text-muted);">💵 Base Efectivo (Gaveta):</span>
-              <strong id="open-preview-cash-amount" style="color:var(--emerald-text); font-weight:800;">$ 500.000</strong>
+              <strong id="open-preview-cash-amount" style="color:var(--emerald-text); font-weight:800;">$ 0</strong>
             </div>
             <div id="open-preview-card-row" style="display:none; justify-content:space-between; margin-bottom:5px;">
               <span style="color:var(--text-muted);">💳 Base Tarjeta (<span id="open-preview-account-name">--</span>):</span>
@@ -4862,7 +4862,7 @@
             </div>
             <div style="display:flex; justify-content:space-between; border-top:1px dashed var(--border-color); padding-top:6px; margin-top:6px;">
               <span style="font-weight:700; color:var(--text-main);">💼 Total Base de Apertura:</span>
-              <strong id="open-preview-total-amount" style="font-weight:900; font-size:1.05rem; color:var(--text-main);">$ 500.000</strong>
+              <strong id="open-preview-total-amount" style="font-weight:900; font-size:1.05rem; color:var(--text-main);">$ 0</strong>
             </div>
           </div>
         </div>

@@ -567,7 +567,7 @@ class NexusApp {
     if (this.data.recentTransactions && Array.isArray(this.data.recentTransactions)) {
       this.data.recentTransactions.forEach(tx => {
         if (!tx.cashier) {
-          tx.cashier = tx.type?.includes('POS') ? 'Javier Ortiz (Cajero)' : (this.data.store?.cashier || 'Carlos Mendoza');
+          tx.cashier = tx.type?.includes('POS') ? 'Cajero Golduke' : (this.data.store?.cashier || 'Golduke');
         }
       });
     } else {
@@ -1017,13 +1017,13 @@ class NexusApp {
       // Requerimiento: Costo General e Inventario solo varían con compras o ingresos, NO bajan al vender
       if (!this.data.kpis.inventoryValue || this.data.kpis.inventoryValue <= 0) {
         const totalCostValue = this.data.products.reduce((acc, p) => acc + this.getProductTotalCost(p), 0);
-        this.data.kpis.inventoryValue = totalCostValue > 0 ? Math.round(totalCostValue * 100) / 100 : 183250000;
+        this.data.kpis.inventoryValue = totalCostValue > 0 ? Math.round(totalCostValue * 100) / 100 : 0;
       }
       if (!this.data.kpis.avgCostPerGram || this.data.kpis.avgCostPerGram <= 0) {
-        this.data.kpis.avgCostPerGram = 339352;
+        this.data.kpis.avgCostPerGram = 0;
       }
       if (!this.data.kpis.avgCostGrams || this.data.kpis.avgCostGrams <= 0) {
-        this.data.kpis.avgCostGrams = 540;
+        this.data.kpis.avgCostGrams = 0;
       }
       this.data.kpis.skusCount = this.data.products.length;
     }
@@ -3143,8 +3143,8 @@ class NexusApp {
           if (!this.data.kpis) this.data.kpis = {};
           this.data.kpis.inventoryValue = Math.round(this.data.products.reduce((acc, p) => acc + (this.getProductTotalCost(p) || 0), 0) * 100) / 100;
           if (totalGramsAdded > 0 && !isExtras) {
-            const currentGrams = this.data.kpis.avgCostGrams || 540;
-            const currentAvgCost = this.data.kpis.avgCostPerGram || 339352;
+            const currentGrams = this.data.kpis.avgCostGrams || 0;
+            const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
             const newTotalCost = (currentGrams * currentAvgCost) + totalCost;
             const newTotalGrams = currentGrams + totalGramsAdded;
             this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
@@ -3364,11 +3364,11 @@ class NexusApp {
         const addedGrams = this.getGramsFromProduct(newP);
         if (!this.data.kpis) this.data.kpis = {};
         if (addedCost > 0) {
-          this.data.kpis.inventoryValue = Math.round(((this.data.kpis.inventoryValue || 183250000) + addedCost) * 100) / 100;
+          this.data.kpis.inventoryValue = Math.round(((this.data.kpis.inventoryValue || 0) + addedCost) * 100) / 100;
         }
         if (addedGrams > 0) {
-          const currentGrams = this.data.kpis.avgCostGrams || 540;
-          const currentAvgCost = this.data.kpis.avgCostPerGram || 339352;
+          const currentGrams = this.data.kpis.avgCostGrams || 0;
+          const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
           const newTotalCost = (currentGrams * currentAvgCost) + addedCost;
           const newTotalGrams = currentGrams + addedGrams;
           this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
@@ -3458,11 +3458,11 @@ class NexusApp {
           const diffGrams = newProdGrams - oldProdGrams;
           if (!this.data.kpis) this.data.kpis = {};
           if (diffCost !== 0) {
-            this.data.kpis.inventoryValue = Math.max(0, Math.round(((this.data.kpis.inventoryValue || 183250000) + diffCost) * 100) / 100);
+            this.data.kpis.inventoryValue = Math.max(0, Math.round(((this.data.kpis.inventoryValue || 0) + diffCost) * 100) / 100);
           }
           if (diffGrams !== 0) {
-            const currentGrams = this.data.kpis.avgCostGrams || 540;
-            const currentAvgCost = this.data.kpis.avgCostPerGram || 339352;
+            const currentGrams = this.data.kpis.avgCostGrams || 0;
+            const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
             const newTotalCost = Math.max(0, (currentGrams * currentAvgCost) + diffCost);
             const newTotalGrams = Math.max(1, currentGrams + diffGrams);
             this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
@@ -6262,7 +6262,11 @@ class NexusApp {
     // Using a helper to avoid 9 separate tree traversals.
     const _q = (id) => document.getElementById(id);
     const kpiSalesEl     = _q('kpi-sales');
+    const kpiSalesTrendEl= _q('kpi-sales-trend');
+    const kpiSalesSubEl  = _q('kpi-sales-sub');
     const kpiTxEl        = _q('kpi-tx');
+    const kpiTxTrendEl   = _q('kpi-tx-trend');
+    const kpiTxSubEl     = _q('kpi-tx-sub');
     const kpiInvValEl    = _q('kpi-inv-val');
     const kpiSkusCntEl   = _q('kpi-skus-cnt');
     const kpiAvgCostEl   = _q('kpi-avg-cost');
@@ -6272,15 +6276,29 @@ class NexusApp {
     const kpiNetMarginEl = _q('kpi-net-margin');
 
     const now = new Date();
-    const todayTxs = (this.data.recentTransactions || []).filter(t => {
-      if (!t || !t.date) return false;
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+
+    const activeTxs = (this.data.recentTransactions || []).filter(t => t && t.status !== 'Reversada' && t.status !== 'Anulada');
+
+    const todayTxs = activeTxs.filter(t => {
+      if (!t.date) return false;
       const td = this.parseDateSafe(t.date);
       if (!td) return false;
       return td.getFullYear() === now.getFullYear() && td.getMonth() === now.getMonth() && td.getDate() === now.getDate();
     });
+
+    const yesterdayTxs = activeTxs.filter(t => {
+      if (!t.date) return false;
+      const td = this.parseDateSafe(t.date);
+      if (!td) return false;
+      return td.getFullYear() === yesterday.getFullYear() && td.getMonth() === yesterday.getMonth() && td.getDate() === yesterday.getDate();
+    });
     
     const dynamicSalesToday = todayTxs.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
     const dynamicTxToday = todayTxs.length;
+    const dynamicSalesYesterday = yesterdayTxs.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+    const dynamicTxYesterday = yesterdayTxs.length;
 
     if (!this.data.kpis) this.data.kpis = {};
     const effectiveSalesToday = (todayTxs.length > 0 || (this.data.recentTransactions && this.data.recentTransactions.length > 0))
@@ -6298,7 +6316,32 @@ class NexusApp {
       kpiSalesEl.innerText = this.formatCurrency(sVal);
       kpiSalesEl.title = this.formatCurrency(effectiveSalesToday);
     }
+    if (kpiSalesTrendEl) {
+      if (dynamicSalesYesterday > 0) {
+        const diffPct = ((effectiveSalesToday - dynamicSalesYesterday) / dynamicSalesYesterday) * 100;
+        const arrow = diffPct >= 0 ? '↑' : '↓';
+        kpiSalesTrendEl.innerText = `${arrow} ${Math.abs(diffPct).toFixed(1)}%`;
+      } else {
+        kpiSalesTrendEl.innerText = effectiveSalesToday > 0 ? '↑ 100%' : '0.0%';
+      }
+    }
+    if (kpiSalesSubEl) {
+      kpiSalesSubEl.innerText = `vs. ayer (${this.formatCurrency(Math.round(dynamicSalesYesterday))})`;
+    }
     if (kpiTxEl) kpiTxEl.innerText = effectiveTxToday;
+    if (kpiTxTrendEl) {
+      if (dynamicTxYesterday > 0) {
+        const txPct = ((effectiveTxToday - dynamicTxYesterday) / dynamicTxYesterday) * 100;
+        const arrow = txPct >= 0 ? '↑' : '↓';
+        kpiTxTrendEl.innerText = `${arrow} ${Math.abs(txPct).toFixed(1)}%`;
+      } else {
+        kpiTxTrendEl.innerText = effectiveTxToday > 0 ? '↑ 100%' : '0.0%';
+      }
+    }
+    if (kpiTxSubEl) {
+      const avgTicket = effectiveTxToday > 0 ? Math.round(effectiveSalesToday / effectiveTxToday) : 0;
+      kpiTxSubEl.innerText = `Ticket Promedio: ${this.formatCurrency(avgTicket)}`;
+    }
 
     // Dynamic valuation based strictly on live products
     const liveInvVal = (this.data.products || []).reduce((sum, p) => sum + (this.getProductTotalCost(p) || 0), 0);
@@ -6603,9 +6646,9 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
+  <Author>Golduke Joyería S.A.S.</Author>
   <Created>${now.toISOString()}</Created>
-  <Company>Charles Joyas SAS</Company>
+  <Company>Golduke Joyería S.A.S.</Company>
  </DocumentProperties>
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
@@ -6918,7 +6961,7 @@ class NexusApp {
    <Column ss:Width="80"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="16" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — DIRECTORIO GENERAL DE CLIENTES &amp; CARTERA COMERCIAL</Data></Cell>
+    <Cell ss:MergeAcross="16" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — DIRECTORIO GENERAL DE CLIENTES &amp; CARTERA COMERCIAL</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="16" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Gestión de Contacto, Límites de Crédito, Deuda y Formas de Pago</Data></Cell>
@@ -7082,7 +7125,7 @@ class NexusApp {
    <Column ss:Width="380"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  POLÍTICAS DE CRÉDITO Y COBRANZA — CHARLES JOYAS SAS</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  POLÍTICAS DE CRÉDITO Y COBRANZA — GOLDUKE JOYERÍA S.A.S.</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="2" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Condiciones de otorgamiento de cupo, plazos, abonos y Plan Separe</Data></Cell>
@@ -7118,7 +7161,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, `Directorio_Clientes_CharlesJoyas_${dateStr}`);
+    this._downloadExcelWorkbook(xml, `Directorio_Clientes_GoldukeJoyeria_${dateStr}`);
     this.showToast(`Directorio de Clientes (${customers.length} registros) exportado a Excel exitosamente`, 'success');
   }
 
@@ -7309,9 +7352,9 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
+  <Author>Golduke Joyería S.A.S.</Author>
   <Created>${now.toISOString()}</Created>
-  <Company>Charles Joyas SAS</Company>
+  <Company>Golduke Joyería S.A.S.</Company>
  </DocumentProperties>
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
@@ -7612,7 +7655,7 @@ class NexusApp {
    <Column ss:Width="130"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — DIRECTORIO GENERAL DE PROVEEDORES &amp; DISTRIBUIDORES</Data></Cell>
+    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — DIRECTORIO GENERAL DE PROVEEDORES &amp; DISTRIBUIDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="14" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Gestión de Compras, Condiciones de Pago y Saldos Pendientes</Data></Cell>
@@ -7774,7 +7817,7 @@ class NexusApp {
    <Column ss:Width="360"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  POLÍTICAS COMERCIALES CON PROVEEDORES — CHARLES JOYAS SAS</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  POLÍTICAS COMERCIALES CON PROVEEDORES — GOLDUKE JOYERÍA S.A.S.</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="2" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Procedimientos de auditoría, recepción de materia prima y dispersión de fondos</Data></Cell>
@@ -7810,7 +7853,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, `Directorio_Proveedores_CharlesJoyas_${dateStr}`);
+    this._downloadExcelWorkbook(xml, `Directorio_Proveedores_GoldukeJoyeria_${dateStr}`);
     this.showToast(`Directorio de Proveedores (${suppliers.length} registros) exportado a Excel exitosamente`, 'success');
   }
 
@@ -8018,9 +8061,9 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
+  <Author>Golduke Joyería S.A.S.</Author>
   <Created>${now.toISOString()}</Created>
-  <Company>Charles Joyas SAS</Company>
+  <Company>Golduke Joyería S.A.S.</Company>
  </DocumentProperties>
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
@@ -8239,7 +8282,7 @@ class NexusApp {
    <Column ss:Width="150"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — REGISTRO DETALLADO DE GASTOS OPERATIVOS</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — REGISTRO DETALLADO DE GASTOS OPERATIVOS</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="10" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Auditoría de Egresos, Nómina, Suministros y Servicios</Data></Cell>
@@ -8395,7 +8438,7 @@ class NexusApp {
    <Column ss:Width="340"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  GUÍA CONTABLE DE GASTOS OPERATIVOS — CHARLES JOYAS SAS</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  GUÍA CONTABLE DE GASTOS OPERATIVOS — GOLDUKE JOYERÍA S.A.S.</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="2" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Criterios de imputación contable y clasificación de costos para auditoría</Data></Cell>
@@ -8431,7 +8474,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, `Gastos_Operativos_Detallado_CharlesJoyas_${dateStr}`);
+    this._downloadExcelWorkbook(xml, `Gastos_Operativos_Detallado_GoldukeJoyeria_${dateStr}`);
     this.showToast(`Auditoría de Gastos Operativos (${expenses.length} egresos) exportada a Excel exitosamente`, 'success');
   }
 
@@ -9331,7 +9374,7 @@ class NexusApp {
 
    <!-- ENCABEZADO -->
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="12" ss:StyleID="HeaderTitle"><Data ss:Type="String">CHARLES JOYAS S.A.S. - HISTORIAL DE VENTAS &amp; FACTURACIÓN</Data></Cell>
+    <Cell ss:MergeAcross="12" ss:StyleID="HeaderTitle"><Data ss:Type="String">GOLDUKE JOYERÍA S.A.S. - HISTORIAL DE VENTAS &amp; FACTURACIÓN</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="12" ss:StyleID="HeaderSub"><Data ss:Type="String">Reporte oficial de transacciones emitidas en punto de venta y mostrador comercial</Data></Cell>
@@ -10134,7 +10177,7 @@ class NexusApp {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const filterSuffix = currentFilter !== 'all' ? `_${currentFilter}` : '';
     const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `Inventario_Charles_Joyas${filterSuffix}_${dateStr}.csv`;
+    const fileName = `Inventario_Golduke_Joyeria${filterSuffix}_${dateStr}.csv`;
 
     if (window.navigator && window.navigator.msSaveOrOpenBlob) {
       window.navigator.msSaveOrOpenBlob(blob, fileName);
@@ -10275,7 +10318,7 @@ class NexusApp {
    <Column ss:Width="90"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — CATÁLOGO DE PRODUCTOS E INVENTARIO VALORIZADO</Data></Cell>
+    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — CATÁLOGO DE PRODUCTOS E INVENTARIO VALORIZADO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="14" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Metales Preciosos: Oro 18K, 14K, Plata 925</Data></Cell>
@@ -10338,7 +10381,7 @@ class NexusApp {
 </Workbook>`;
 
     const dateFileStr = new Date().toISOString().split('T')[0];
-    this._downloadExcelWorkbook(xml, 'Inventario_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Inventario_Golduke_Joyeria');
     this.showToast(`Inventario exportado exitosamente a Excel (.xls) con separadores de miles (${prodsToExport.length} productos)`, 'success');
   }
 
@@ -10652,9 +10695,9 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
+  <Author>Golduke Joyería S.A.S.</Author>
   <Created>${now.toISOString()}</Created>
-  <Company>Charles Joyas SAS</Company>
+  <Company>Golduke Joyería S.A.S.</Company>
  </DocumentProperties>
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
@@ -10940,7 +10983,7 @@ class NexusApp {
    <Column ss:Width="230"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — CONTROL PATRIMONIAL DE ACTIVOS FIJOS &amp; EQUIPAMIENTO</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — CONTROL PATRIMONIAL DE ACTIVOS FIJOS &amp; EQUIPAMIENTO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Registro de Bienes, Valor de Compra y Depreciación</Data></Cell>
@@ -11107,7 +11150,7 @@ class NexusApp {
     <Cell ss:MergeAcross="3" ss:StyleID="TitleHeader"><Data ss:Type="String">  NORMATIVA CONTABLE Y POLÍTICAS DE DEPRECIACIÓN NIIF</Data></Cell>
    </Row>
    <Row ss:Height="18">
-    <Cell ss:MergeAcross="3" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Marco fiscal colombiano (Estatuto Tributario Art. 137) y políticas contables de Charles Joyas SAS</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Marco fiscal colombiano (Estatuto Tributario Art. 137) y políticas contables de Golduke Joyería S.A.S.</Data></Cell>
    </Row>
    <Row ss:Height="10"></Row>
 
@@ -11145,7 +11188,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, `Activos_Fijos_Patrimonio_CharlesJoyas_${dateStr}`);
+    this._downloadExcelWorkbook(xml, `Activos_Fijos_Patrimonio_GoldukeJoyeria_${dateStr}`);
     this.showToast(`Auditoría de Activos Fijos (${assets.length} bienes) exportada a Excel exitosamente`, 'success');
   }
 
@@ -12113,7 +12156,7 @@ class NexusApp {
   populateOpenCashAccountSelect() {
     const select = document.getElementById('open-cash-card-account-select');
     if (!select) return;
-    const accounts = this.getDestinationBankAccounts ? this.getDestinationBankAccounts() : ['Cuenta Carlos', 'Cuenta Sharick', 'CUENTA PRINCIPAL NEGOCIO'];
+    const accounts = this.getDestinationBankAccounts ? this.getDestinationBankAccounts() : ['CUENTA GOLDUKE JOYERÍA SAS', 'Cuenta Sharick', 'CUENTA PRINCIPAL NEGOCIO'];
     select.innerHTML = accounts.map(acc => `<option value="${this.escapeHtml(acc)}">${this.escapeHtml(acc)}</option>`).join('');
   }
 
@@ -12192,7 +12235,7 @@ class NexusApp {
     const openingCash = this.parseCleanNumber(inputCash?.value) || 0;
     const isCardEnabled = checkCard ? checkCard.checked : false;
     const openingCard = isCardEnabled ? (this.parseCleanNumber(inputCard?.value) || 0) : 0;
-    const openingAccount = isCardEnabled ? (selectAcc?.value?.trim() || 'Cuenta Carlos') : '';
+    const openingAccount = isCardEnabled ? (selectAcc?.value?.trim() || 'CUENTA GOLDUKE JOYERÍA SAS') : '';
     const openingTotal = openingCash + openingCard;
 
     const currentOperator = this.currentUser?.name || 'Cajero';
@@ -13022,7 +13065,7 @@ class NexusApp {
       return;
     }
 
-    const storeName = this.data.store?.name || 'Charles Joyas';
+    const storeName = this.data.store?.name || 'Golduke Joyería';
     const now = new Date();
     const formattedNow = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO')}`;
 
@@ -13238,7 +13281,7 @@ class NexusApp {
       this.showToast('No hay ningún arqueo seleccionado para exportar', 'warning');
       return;
     }
-    const storeName = this.data.store?.name || 'Charles Joyas';
+    const storeName = this.data.store?.name || 'Golduke Joyería';
     const now = new Date();
     const formattedNow = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO')}`;
 
@@ -14340,7 +14383,7 @@ class NexusApp {
     let hoja1Rows = `
       <!-- HEADER CORPORATIVO -->
       <Row ss:Height="28">
-        <Cell ss:MergeAcross="4" ss:StyleID="TitleHeader"><Data ss:Type="String">CHARLES JOYAS - JOYERÍA FINA &amp; TALLER DE ALTA GAMA</Data></Cell>
+        <Cell ss:MergeAcross="4" ss:StyleID="TitleHeader"><Data ss:Type="String">GOLDUKE JOYERÍA - JOYERÍA FINA &amp; TALLER DE ALTA GAMA</Data></Cell>
       </Row>
       <Row ss:Height="22">
         <Cell ss:MergeAcross="4" ss:StyleID="SubTitleHeader"><Data ss:Type="String">ESTADO DE RESULTADOS INTEGRAL &amp; INFORME FINANCIERO (P&amp;L)</Data></Cell>
@@ -14501,7 +14544,7 @@ class NexusApp {
     // -------------------------------------------------------------------------
     let hoja2Rows = `
       <Row ss:Height="26">
-        <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">CHARLES JOYAS - DETALLE DE VENTAS DEL PERÍODO</Data></Cell>
+        <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">GOLDUKE JOYERÍA - DETALLE DE VENTAS DEL PERÍODO</Data></Cell>
       </Row>
       <Row ss:Height="20">
         <Cell ss:MergeAcross="7" ss:StyleID="MetaHeader"><Data ss:Type="String">Período: ${escapeXml(periodLabel)} | Total Ventas: ${validSalesTx.length} transacciones | Facturado: $ ${Number(m.totalGrossRevenue).toLocaleString('es-CO')} COP</Data></Cell>
@@ -14555,7 +14598,7 @@ class NexusApp {
     // -------------------------------------------------------------------------
     let hoja3Rows = `
       <Row ss:Height="26">
-        <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">CHARLES JOYAS - DETALLE DE GASTOS OPERATIVOS (OPEX)</Data></Cell>
+        <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">GOLDUKE JOYERÍA - DETALLE DE GASTOS OPERATIVOS (OPEX)</Data></Cell>
       </Row>
       <Row ss:Height="20">
         <Cell ss:MergeAcross="5" ss:StyleID="MetaHeader"><Data ss:Type="String">Período: ${escapeXml(periodLabel)} | Total Egresos: ${periodExpenses.length} registros | Monto Total: $ ${Number(m.totalOPEX).toLocaleString('es-CO')} COP</Data></Cell>
@@ -14607,8 +14650,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas</Author>
-  <Company>Charles Joyas Joyería Fina</Company>
+  <Author>Golduke Joyería</Author>
+  <Company>Golduke Joyería Joyería Fina</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -14898,7 +14941,7 @@ class NexusApp {
       ? `${this.finanzasCustomStartDate || 'desde'}_al_${this.finanzasCustomEndDate || 'hasta'}`
       : period;
     link.setAttribute('href', url);
-    link.setAttribute('download', `Estado_Resultados_PyL_Charles_Joyas_${fileRangeSuffix}_${fileDateStr}.xls`);
+    link.setAttribute('download', `Estado_Resultados_PyL_Golduke_Joyeria_${fileRangeSuffix}_${fileDateStr}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -15216,7 +15259,7 @@ class NexusApp {
     const link = document.createElement('a');
     const dateStr = new Date().toISOString().split('T')[0];
     link.setAttribute('href', url);
-    link.setAttribute('download', `Reporte_Compras_Charles_Joyas_${m.period}_${dateStr}.csv`);
+    link.setAttribute('download', `Reporte_Compras_Golduke_Joyeria_${m.period}_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -15762,8 +15805,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -15785,7 +15828,7 @@ class NexusApp {
    <Column ss:Width="120"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — AUDITORÍA GENERAL DE CRÉDITOS Y CUENTAS POR PAGAR (CXP)</Data></Cell>
+    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — AUDITORÍA GENERAL DE CRÉDITOS Y CUENTAS POR PAGAR (CXP)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="9" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Consolidado Ejecutivo de Compromisos Comerciales</Data></Cell>
@@ -15872,7 +15915,7 @@ class NexusApp {
    <Column ss:Width="105"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="12" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — CARTERA ACTIVA: DEUDAS Y SALDOS PENDIENTES DE PAGO</Data></Cell>
+    <Cell ss:MergeAcross="12" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — CARTERA ACTIVA: DEUDAS Y SALDOS PENDIENTES DE PAGO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="12" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Listado Prioritario de Compromisos Comerciales Pendientes (Filtro Activo: Saldo > $0)</Data></Cell>
@@ -15938,7 +15981,7 @@ class NexusApp {
    <Column ss:Width="160"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO MAESTRO DE CRÉDITOS CON PROVEEDORES (HISTÓRICO)</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO MAESTRO DE CRÉDITOS CON PROVEEDORES (HISTÓRICO)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Trazabilidad Completa de Compromisos Comerciales: Cuentas Activas y Cuentas Saldadas</Data></Cell>
@@ -16002,7 +16045,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="9" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Comprobantes Oficiales de Salidas de Caja y Banco para Amortización de Deudas</Data></Cell>
@@ -16047,7 +16090,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Reporte_Creditos_Proveedores_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Reporte_Creditos_Proveedores_Golduke_Joyeria');
     this.showToast('Auditoría Completa de Créditos y Cuentas por Pagar exportada a Excel exitosamente', 'success');
   }
 
@@ -16149,8 +16192,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -16170,7 +16213,7 @@ class NexusApp {
    <Column ss:Width="90"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — RESUMEN EJECUTIVO DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — RESUMEN EJECUTIVO DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="7" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller de Orfebrería | Auditoría de Cuentas por Pagar</Data></Cell>
@@ -16247,7 +16290,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DETALLADO DE ABONOS A COMPRAS (PAGOS PROVEEDORES)</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DETALLADO DE ABONOS A COMPRAS (PAGOS PROVEEDORES)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Trazabilidad Completa de Salidas de Dinero | Relación con Órdenes y Créditos</Data></Cell>
@@ -16290,7 +16333,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Historial_Abonos_Compras_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Historial_Abonos_Compras_Golduke_Joyeria');
     this.showToast('Historial de Abonos a Compras exportado a Excel exitosamente', 'success');
   }
 
@@ -16385,8 +16428,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -16405,7 +16448,7 @@ class NexusApp {
    <Column ss:Width="90"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="6" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — RESUMEN EJECUTIVO DE ABONOS Y COBROS A CLIENTES</Data></Cell>
+    <Cell ss:MergeAcross="6" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — RESUMEN EJECUTIVO DE ABONOS Y COBROS A CLIENTES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="6" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller de Orfebrería | Recaudos Crédito y Plan Separe</Data></Cell>
@@ -16468,7 +16511,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DETALLADO DE ABONOS A VENTAS (COBROS CLIENTES)</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DETALLADO DE ABONOS A VENTAS (COBROS CLIENTES)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="10" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Control de Ingresos por Cuotas de Créditos y Plan Separe de Joyería</Data></Cell>
@@ -16510,7 +16553,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Historial_Abonos_Ventas_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Historial_Abonos_Ventas_Golduke_Joyeria');
     this.showToast('Historial de Abonos a Ventas exportado a Excel exitosamente', 'success');
   }
 
@@ -16678,8 +16721,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -16697,7 +16740,7 @@ class NexusApp {
    <Column ss:Width="90"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — RESUMEN EJECUTIVO DE COMPRAS &amp; ABASTECIMIENTO</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — RESUMEN EJECUTIVO DE COMPRAS &amp; ABASTECIMIENTO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="5" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Indicadores de Metales, Gemas e Inventario</Data></Cell>
@@ -16789,7 +16832,7 @@ class NexusApp {
    <Column ss:Width="120"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="20" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO DETALLADO DE ÓRDENES DE COMPRA A PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="20" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO DETALLADO DE ÓRDENES DE COMPRA A PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="20" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Control Exhaustivo de Materias Primas, Gramaje Joyero, Precios por Gramo y Saldos</Data></Cell>
@@ -16859,7 +16902,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="8" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="8" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="8" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Registro de Egresos y Liquidaciones de Compras y Créditos Comerciales</Data></Cell>
@@ -16902,7 +16945,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Reporte_Detallado_Compras_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Reporte_Detallado_Compras_Golduke_Joyeria');
     this.showToast('Reporte Detallado de Compras exportado a Excel exitosamente', 'success');
   }
 
@@ -17105,8 +17148,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -17124,7 +17167,7 @@ class NexusApp {
    <Column ss:Width="90"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO COMPLETO DE COMPRAS, ABASTECIMIENTO Y ABONOS</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO COMPLETO DE COMPRAS, ABASTECIMIENTO Y ABONOS</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="5" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Consolidado Multi-Módulo de Flujos Comerciales</Data></Cell>
@@ -17204,7 +17247,7 @@ class NexusApp {
    <Column ss:Width="110"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="19" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DETALLADO DE ÓRDENES DE COMPRA</Data></Cell>
+    <Cell ss:MergeAcross="19" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DETALLADO DE ÓRDENES DE COMPRA</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="19" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Control Exhaustivo de Materias Primas, Gramaje Joyero, Precios por Gramo y Saldos</Data></Cell>
@@ -17273,7 +17316,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DE PAGOS Y ABONOS A PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Trazabilidad de Desembolsos a Cuentas Comerciales de Proveedores de Joyería</Data></Cell>
@@ -17331,7 +17374,7 @@ class NexusApp {
    <Column ss:Width="95"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DE ABONOS RECIBIDOS DE CLIENTES</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DE ABONOS RECIBIDOS DE CLIENTES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="10" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Control de Ingresos por Cuotas de Crédito y Plan Separe de Joyas</Data></Cell>
@@ -17387,7 +17430,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — CARTERA Y CUENTAS POR PAGAR A PROVEEDORES (CXP)</Data></Cell>
+    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — CARTERA Y CUENTAS POR PAGAR A PROVEEDORES (CXP)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="9" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría de Compromisos Financieros, Vencimientos y Saldos de Deuda</Data></Cell>
@@ -17428,7 +17471,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Libro_Completo_Compras_y_Abonos_Charles_Joyas');
+    this._downloadExcelWorkbook(xml, 'Libro_Completo_Compras_y_Abonos_Golduke_Joyeria');
     this.showToast('Libro Completo de Compras y Abonos exportado a Excel exitosamente', 'success');
   }
 
@@ -18243,8 +18286,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -18263,7 +18306,7 @@ class NexusApp {
    <Column ss:Width="120"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="4" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — REPORTE GENERAL OPERATIVO Y ESTADO DE RESULTADOS (P&amp;L)</Data></Cell>
+    <Cell ss:MergeAcross="4" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — REPORTE GENERAL OPERATIVO Y ESTADO DE RESULTADOS (P&amp;L)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="4" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Consolidado Integral de Operaciones, Ventas, Gastos y Tesorería</Data></Cell>
@@ -18376,7 +18419,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="13" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO DETALLADO DE VENTAS Y FACTURACIÓN POS</Data></Cell>
+    <Cell ss:MergeAcross="13" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO DETALLADO DE VENTAS Y FACTURACIÓN POS</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="13" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría Nominal de Tickets Emitidos, Clientes, Artículos, Gramajes y Medios de Pago</Data></Cell>
@@ -18442,7 +18485,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO DETALLADO DE GASTOS OPERATIVOS (OPEX)</Data></Cell>
+    <Cell ss:MergeAcross="7" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO DETALLADO DE GASTOS OPERATIVOS (OPEX)</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="7" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría Nominal de Egresos, Nómina, Arrendamiento, Servicios y Mantenimiento de Taller</Data></Cell>
@@ -18502,7 +18545,7 @@ class NexusApp {
    <Column ss:Width="110"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — AUDITORÍA DE COMPRAS DE MERCANCÍA Y PROVEEDORES</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — AUDITORÍA DE COMPRAS DE MERCANCÍA Y PROVEEDORES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Adquisición de Joyas, Oro 18k, Plata 925, Insumos de Taller y Cuentas por Pagar Generadas</Data></Cell>
@@ -18569,7 +18612,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — CONTROL DE ARQUEOS Y CIERRES DE CAJA</Data></Cell>
+    <Cell ss:MergeAcross="11" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — CONTROL DE ARQUEOS Y CIERRES DE CAJA</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="11" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría Operativa de Gaveta, Turnos de Cajeros, Conciliación de Efectivo y Discrepancias</Data></Cell>
@@ -18610,7 +18653,7 @@ class NexusApp {
 </Workbook>`;
 
     const cleanPeriodName = (periodText || dateStr).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_');
-    this._downloadExcelWorkbook(xml, `Reporte_General_Operativo_CharlesJoyas_${cleanPeriodName}`);
+    this._downloadExcelWorkbook(xml, `Reporte_General_Operativo_GoldukeJoyeria_${cleanPeriodName}`);
     this.showToast(`Libro Operativo General descargado exitosamente (${periodText || dateStr})`, 'success');
   }
 
@@ -18691,7 +18734,7 @@ class NexusApp {
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
     const cleanPeriodName = (periodText || new Date().toISOString().slice(0, 10)).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_');
-    link.setAttribute('download', `Reporte_General_Operativo_CharlesJoyas_${cleanPeriodName}.csv`);
+    link.setAttribute('download', `Reporte_General_Operativo_GoldukeJoyeria_${cleanPeriodName}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -18748,7 +18791,7 @@ class NexusApp {
     }
 
     const dateStr = new Date().toISOString().split('T')[0];
-    const storeName = this.data.store?.name || 'Charles Joyas';
+    const storeName = this.data.store?.name || 'Golduke Joyería';
     const periodText = (this.repProdStartDate && this.repProdEndDate)
       ? `Período: ${this.repProdStartDate.toISOString().split('T')[0]} al ${this.repProdEndDate.toISOString().split('T')[0]}`
       : 'Histórico Completo Consolidado';
@@ -18948,9 +18991,9 @@ class NexusApp {
     } = options;
 
     const store = this.data.store || {};
-    const storeName = this.escapeHtml(store.name || 'Charles Joyas');
+    const storeName = this.escapeHtml(store.name || 'Golduke Joyería');
     const metalLey = this.escapeHtml(this.getLeyMetalFromItems(items));
-    const legalName = this.escapeHtml(store.legalName || 'Inversiones Charles Joyas S.A.S');
+    const legalName = this.escapeHtml(store.legalName || 'Golduke Joyería S.A.S.');
     const address = this.escapeHtml(store.address || '');
     const addressExtra = this.escapeHtml(store.addressExtra || '');
     const phone = this.escapeHtml(store.phone || '');
@@ -19328,7 +19371,7 @@ class NexusApp {
     const totalLiabilities = liabilitiesShort + liabilitiesLong;
     const netEquity = totalAssets - totalLiabilities;
 
-    const storeName = this.data.store?.name || 'Charles Joyas SAS';
+    const storeName = this.data.store?.name || 'Golduke Joyería S.A.S.';
 
     if (kpiContainer) {
       kpiContainer.innerHTML = `
@@ -19436,7 +19479,7 @@ class NexusApp {
         .replace(/'/g, '&apos;');
     };
 
-    const storeName = this.data.store?.name || 'Charles Joyas SAS';
+    const storeName = this.data.store?.name || 'Golduke Joyería S.A.S.';
     const storeNit = this.data.store?.nit || '901.847.291-3';
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
@@ -20334,7 +20377,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, 'Balance_General_Consolidado_CharlesJoyas');
+    this._downloadExcelWorkbook(xml, 'Balance_General_Consolidado_GoldukeJoyeria');
     this.showToast('Balance General exportado exitosamente a Excel (4 Hojas)', 'success');
   }
 
@@ -21400,10 +21443,10 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS - Sistema POS</Author>
+  <Author>Golduke Joyería S.A.S. - Sistema POS</Author>
   <LastAuthor>${escapeXml(this.currentUser?.name || 'Administración')}</LastAuthor>
   <Created>${now.toISOString()}</Created>
-  <Company>CHARLES JOYAS SAS</Company>
+  <Company>GOLDUKE JOYERÍA S.A.S.</Company>
  </DocumentProperties>
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
@@ -21709,7 +21752,7 @@ class NexusApp {
    <Column ss:Width="160"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — INFORME COMPARATIVA DE PERIODOS Y UTILIDADES</Data></Cell>
+    <Cell ss:MergeAcross="14" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — INFORME COMPARATIVA DE PERIODOS Y UTILIDADES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="14" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Auditoría Mensual de Facturación, Gastos, Utilidades y Márgenes</Data></Cell>
@@ -21804,7 +21847,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="13" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — REGISTRO HISTÓRICO DETALLADO DE VENTAS POR PERÍODO</Data></Cell>
+    <Cell ss:MergeAcross="13" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — REGISTRO HISTÓRICO DETALLADO DE VENTAS POR PERÍODO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="13" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Desglose de cada transacción, artículos vendidos, clientes, medios de pago y facturación</Data></Cell>
@@ -21858,7 +21901,7 @@ class NexusApp {
    <Column ss:Width="150"/>
 
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="8" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — REGISTRO HISTÓRICO DE GASTOS OPERATIVOS POR PERÍODO</Data></Cell>
+    <Cell ss:MergeAcross="8" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — REGISTRO HISTÓRICO DE GASTOS OPERATIVOS POR PERÍODO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="8" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría de egresos, conceptos, nómina, alquiler, taller y responsables</Data></Cell>
@@ -21908,7 +21951,7 @@ class NexusApp {
    <Column ss:Width="140"/>
 
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — RANKING HISTÓRICO DE MESES POR UTILIDAD GENERADA</Data></Cell>
+    <Cell ss:MergeAcross="9" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — RANKING HISTÓRICO DE MESES POR UTILIDAD GENERADA</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="9" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Análisis de contribución a la utilidad, participación en facturación y ticket promedio</Data></Cell>
@@ -21949,7 +21992,7 @@ class NexusApp {
    <Column ss:Width="360"/>
 
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — METODOLOGÍA CONTABLE Y FÓRMULAS DE CÁLCULO</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — METODOLOGÍA CONTABLE Y FÓRMULAS DE CÁLCULO</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="2" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Glosario explicativo de cada indicador de la Comparativa de Periodos</Data></Cell>
@@ -22002,7 +22045,7 @@ class NexusApp {
 </Workbook>`;
 
     const cleanPeriodName = (periodLabel || dateStr).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_');
-    this._downloadExcelWorkbook(xml, `Comparativa_Periodos_${cleanPeriodName}_CharlesJoyas`);
+    this._downloadExcelWorkbook(xml, `Comparativa_Periodos_${cleanPeriodName}_GoldukeJoyeria`);
     this.showToast(`Libro de Comparativa de Periodos (${periodLabel}) descargado exitosamente`, 'success');
   }
 
@@ -22057,7 +22100,7 @@ class NexusApp {
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
     const cleanPeriodName = (periodLabel || new Date().toISOString().slice(0, 10)).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_');
-    link.setAttribute('download', `Comparativa_Periodos_${cleanPeriodName}_CharlesJoyas.csv`);
+    link.setAttribute('download', `Comparativa_Periodos_${cleanPeriodName}_GoldukeJoyeria.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -22614,7 +22657,7 @@ class NexusApp {
   sendCobranzaWhatsApp(phone, customerName, balance, daysOverdue) {
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const formattedBalance = this.formatCurrency(balance);
-    const storeName = this.data.store?.branding?.appName || this.data.store?.name || 'Charles Joyas SAS';
+    const storeName = this.data.store?.branding?.appName || this.data.store?.name || 'Golduke Joyería S.A.S.';
     
     let msg = `Hola estimado(a) ${customerName}, te saludamos cordialmente de ${storeName}. `;
     if (daysOverdue > 0) {
@@ -22815,8 +22858,8 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas SAS</Author>
-  <Company>Inversiones Charles Joyas S.A.S</Company>
+  <Author>Golduke Joyería S.A.S.</Author>
+  <Company>Golduke Joyería S.A.S.</Company>
   <Created>${now.toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -22846,7 +22889,7 @@ class NexusApp {
    <Column ss:Width="330"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — TABLERO DE CONTROL Y MATRIZ DE AGING DE CARTERA</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — TABLERO DE CONTROL Y MATRIZ DE AGING DE CARTERA</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="5" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  NIT: 901838998-0 | Joyería Fina &amp; Taller | Indicadores de Cartera, Cobranzas y Antigüedad de Saldos</Data></Cell>
@@ -22945,7 +22988,7 @@ class NexusApp {
    <Column ss:Width="230"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="21" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — LIBRO MAESTRO DE CARTERA Y CRÉDITOS DE CLIENTES</Data></Cell>
+    <Cell ss:MergeAcross="21" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — LIBRO MAESTRO DE CARTERA Y CRÉDITOS DE CLIENTES</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="21" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Auditoría Nominal de Cuentas por Cobrar, Vencimientos, Abonos, Morosidad y Acciones de Cobranza</Data></Cell>
@@ -23021,7 +23064,7 @@ class NexusApp {
    <Column ss:Width="100"/>
 
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  CHARLES JOYAS SAS — HISTORIAL DE ABONOS Y RECAUDOS DE CARTERA</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="TitleHeader"><Data ss:Type="String">  GOLDUKE JOYERÍA S.A.S. — HISTORIAL DE ABONOS Y RECAUDOS DE CARTERA</Data></Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="10" ss:StyleID="SubTitleHeader"><Data ss:Type="String">  Registro Cronológico de Cobranzas, Pagos en Caja y Transferencias de Créditos y Planes Separe</Data></Cell>
@@ -23066,7 +23109,7 @@ class NexusApp {
  </Worksheet>
 </Workbook>`;
 
-    this._downloadExcelWorkbook(xml, `Cartera_Clientes_SuperCompleto_CharlesJoyas_${dateStr}`);
+    this._downloadExcelWorkbook(xml, `Cartera_Clientes_SuperCompleto_GoldukeJoyeria_${dateStr}`);
     this.showToast('Libro Excel de Cartera descargado exitosamente (3 Hojas)', 'success');
   }
 
@@ -23148,7 +23191,7 @@ class NexusApp {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Cartera_Clientes_Detallada_CharlesJoyas_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Cartera_Clientes_Detallada_GoldukeJoyeria_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -23859,7 +23902,7 @@ class NexusApp {
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Charles Joyas POS</Author>
+  <Author>Golduke Joyería POS</Author>
   <Created>${new Date().toISOString()}</Created>
  </DocumentProperties>
  <Styles>
@@ -25492,17 +25535,17 @@ class NexusApp {
   }
 
   getDestinationBankAccounts() {
-    // Cuentas base requeridas por el negocio
+    // Cuentas base de Golduke Joyería
     const baseAccounts = [
-      'Cuenta Carlos',
-      'Cuenta Sharick',
-      'CUENTA CHARLES JOYAS SAS'
+      'CUENTA GOLDUKE JOYERÍA SAS',
+      'Transferencia Bancaria Golduke',
+      'Nequi / QR Golduke'
     ];
 
     const discoveredAccounts = [];
     (this.data.paymentMethods || []).forEach(pm => {
       const lower = (pm.name || '').toLowerCase();
-      if ((lower.includes('cuenta') || lower.includes('cta') || lower.includes('banco') || lower.includes('bancaria')) &&
+      if ((lower.includes('cuenta') || lower.includes('cta') || lower.includes('banco') || lower.includes('bancaria') || lower.includes('nequi') || lower.includes('qr')) &&
           !lower.includes('efectivo') && !lower.includes('separe') && !lower.includes('crédito cliente')) {
         let cleanName = pm.name.trim();
         if (cleanName) discoveredAccounts.push(cleanName);
@@ -25519,10 +25562,7 @@ class NexusApp {
 
     discoveredAccounts.forEach(acc => {
       const lower = acc.toLowerCase();
-      const alreadyCovered = (lower.includes('carlos') && accountsSet.has('cuenta carlos')) ||
-                             ((lower.includes('zharick') || lower.includes('sharick')) && accountsSet.has('cuenta sharick')) ||
-                             (lower.includes('charles joyas') && accountsSet.has('cuenta charles joyas sas'));
-      if (!alreadyCovered && !accountsSet.has(lower)) {
+      if (!accountsSet.has(lower)) {
         accountsSet.add(lower);
         finalAccounts.push(acc);
       }
@@ -26045,14 +26085,14 @@ class NexusApp {
     const payMethodName = payMethodNames[this.selectedPayMethod] || 'Efectivo';
 
     const cardAccount = this.selectedPayMethod === 'card'
-      ? (document.getElementById('checkout-card-account-select')?.value?.trim() || 'Cuenta Carlos')
+      ? (document.getElementById('checkout-card-account-select')?.value?.trim() || 'CUENTA GOLDUKE JOYERÍA SAS')
       : '';
     const cardVoucher = this.selectedPayMethod === 'card'
       ? (document.getElementById('checkout-card-voucher-input')?.value?.trim() || '')
       : '';
 
     const transferAccount = this.selectedPayMethod === 'transfer'
-      ? (document.getElementById('checkout-transfer-account-select')?.value?.trim() || 'Cuenta Carlos')
+      ? (document.getElementById('checkout-transfer-account-select')?.value?.trim() || 'CUENTA GOLDUKE JOYERÍA SAS')
       : '';
     const transferVoucher = this.selectedPayMethod === 'transfer'
       ? (document.getElementById('checkout-transfer-voucher-input')?.value?.trim() || '')
@@ -26098,8 +26138,8 @@ class NexusApp {
       }
 
       const combo = this.currentMixedCombo || 'cash_transfer';
-      const m1Account = combo === 'card_transfer' ? (document.getElementById('mixed-account-select-1')?.value?.trim() || 'Cuenta Carlos') : null;
-      const m2Account = document.getElementById('mixed-account-select-2')?.value?.trim() || 'Cuenta Carlos';
+      const m1Account = combo === 'card_transfer' ? (document.getElementById('mixed-account-select-1')?.value?.trim() || 'CUENTA GOLDUKE JOYERÍA SAS') : null;
+      const m2Account = document.getElementById('mixed-account-select-2')?.value?.trim() || 'CUENTA GOLDUKE JOYERÍA SAS';
       const mVoucher = document.getElementById('mixed-voucher-input')?.value?.trim() || '';
 
       const m1Name = combo === 'card_transfer' ? 'Tarjeta' : 'Efectivo';
@@ -26844,7 +26884,7 @@ class NexusApp {
       const shiftStatus = this.data.cashShiftLog?.isOpen ? 'Abierto' : 'Cerrado/Inactivo';
 
       return {
-        empresa: this.data.store?.name || 'Charles Joyas SAS',
+        empresa: this.data.store?.name || 'Golduke Joyería S.A.S.',
         fechaHoy: today,
         kpis: {
           ventasHoy: salesToday,
@@ -27022,7 +27062,7 @@ class NexusApp {
     const netEquity = totalAssets - totalLiabilities;
 
     const balanceContext = {
-      empresa: this.data.store?.name || 'Charles Joyas SAS',
+      empresa: this.data.store?.name || 'Golduke Joyería S.A.S.',
       activos: {
         corrientes: assetsCurrent,
         inventario: invVal,
@@ -27051,7 +27091,7 @@ class NexusApp {
 
     const customer = (this.data.customers || []).find(c => (c.name || '').toLowerCase() === (cc.customer || '').toLowerCase());
     const phone = customer?.phone || '';
-    const storeName = this.data.store?.name || 'Charles Joyas SAS';
+    const storeName = this.data.store?.name || 'Golduke Joyería S.A.S.';
 
     this.openAiCopilotDrawer();
     this.appendUserMessage(`✨ Redactar recordatorio de cobro por WhatsApp para ${cc.customer} (Saldo: ${this.formatCurrency(cc.currentBalance)})`);
