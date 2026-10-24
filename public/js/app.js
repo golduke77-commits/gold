@@ -533,8 +533,8 @@ class NexusApp {
       this.data.store.branding = Object.assign({}, INITIAL_DATA.store.branding, this.data.store.branding);
     }
 
-    if (!this.data.categories || !this.data.categories.some(c => c.id === 'oro18k')) {
-      this.data.categories = Array.from(INITIAL_DATA.categories);
+    if (!this.data.categories || !Array.isArray(this.data.categories)) {
+      this.data.categories = [];
     }
     if (this.data.categories && Array.isArray(this.data.categories)) {
       this.data.categories.forEach(cat => {
@@ -682,23 +682,6 @@ class NexusApp {
       if (res.ok) {
         const dbData = await res.json();
         if (dbData && dbData.products && Array.isArray(dbData.products)) {
-          const dbTime = new Date(dbData.updatedAt || 0).getTime();
-          const localTime = new Date(localData?.updatedAt || 0).getTime();
-
-          // If local data is strictly newer by more than 2s and non-empty (e.g. user created entities while DB was syncing), preserve local data and re-sync
-          if (localData && Array.isArray(localData.products) && localData.products.length > 0 && localTime > dbTime + 2000) {
-            console.log('[NexusApp] LocalStorage tiene datos más recientes que el servidor. Preservando estado local y re-sincronizando...');
-            this.data = Object.assign({}, INITIAL_DATA, localData);
-            this.data.store = Object.assign({}, INITIAL_DATA.store, localData.store || {});
-            this.data.kpis = Object.assign({}, INITIAL_DATA.kpis, localData.kpis || {});
-            this.data.cashShiftLog = Object.assign({}, INITIAL_DATA.cashShiftLog, localData.cashShiftLog || {});
-            this.data.balanceSheet = Object.assign({}, INITIAL_DATA.balanceSheet, localData.balanceSheet || {});
-            this.data.stockRadarData = Object.assign({}, INITIAL_DATA.stockRadarData, localData.stockRadarData || {});
-            this.sanitizeLoadedData();
-            this.savePersistence();
-            return;
-          }
-
           this.data = Object.assign({}, INITIAL_DATA, dbData);
           this.data.store = Object.assign({}, INITIAL_DATA.store, dbData.store || {});
           this.data.kpis = Object.assign({}, INITIAL_DATA.kpis, dbData.kpis || {});
@@ -706,6 +689,9 @@ class NexusApp {
           this.data.balanceSheet = Object.assign({}, INITIAL_DATA.balanceSheet, dbData.balanceSheet || {});
           this.data.stockRadarData = Object.assign({}, INITIAL_DATA.stockRadarData, dbData.stockRadarData || {});
           this.sanitizeLoadedData();
+          try {
+            localStorage.setItem('nexus_pos_data', JSON.stringify(this.data));
+          } catch (e) {}
           console.log('[NexusApp] Persistencia cargada exitosamente desde Backend/MongoDB.');
           return;
         }
