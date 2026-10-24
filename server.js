@@ -33,8 +33,8 @@ if (!process.env.VERCEL) {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-// MongoDB Atlas URI independiente para Golduke (se define en .env)
-const DIRECT_MONGO_URI = process.env.MONGO_URI || '';
+// MongoDB Atlas URI independiente para Golduke (se define en .env o variable de entorno en Vercel)
+const DIRECT_MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://golduke77_db_user:jde0AmuILnk7HIK0@cluster0.4sinp3a.mongodb.net/golduke_pos?retryWrites=true&w=majority';
 let MONGO_URI = (process.env.MONGO_URI || DIRECT_MONGO_URI || '').trim();
 
 const DB_FILE = path.join(__dirname, 'db.json');

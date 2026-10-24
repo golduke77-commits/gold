@@ -19,6 +19,9 @@
     "theme": "luxury-dark",
     "accentColor": "#D97706",
     "branding": {
+      "appName": "GOLDUKE",
+      "appBadge": "SAS",
+      "logoUrl": "",
       "primaryColor": "#0284c7",
       "secondaryColor": "#0d9488",
       "fontHeading": "Inter",
@@ -123,7 +126,7 @@
   "paymentMethods": [
     {
       "id": "PM-001",
-      "name": "CUENTA CHARLES JOYAS SAS",
+      "name": "CUENTA GOLDUKE JOYERÍA SAS",
       "icon": "card",
       "fee": "7%",
       "active": true

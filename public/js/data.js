@@ -1,23 +1,23 @@
-// Clean Initial Data Store for Nexus POS SaaS - Joyería Fina & Taller (CHARLES JOYAS SAS)
+// Clean Initial Data Store for Golduke POS SaaS - Joyería Fina & Taller (GOLDUKE JOYERÍA S.A.S.)
 
 const INITIAL_DATA = {
   store: {
-    name: "Charles Joyas",
+    name: "Golduke Joyería",
     slogan: "Oro 18k",
-    legalName: "Inversiones Charles Joyas S.A.S",
-    taxId: "901838998-0",
+    legalName: "Golduke Joyería S.A.S.",
+    taxId: "901.888.777-1",
     currency: "$",
-    phone: "323 491 3454",
-    email: "contacto@nexuspos.io",
-    address: "Carrera 53 # 47 - 21, Local 109",
-    addressExtra: "C.C Luz del Dia",
-    cashier: "Carlos Mendoza",
+    phone: "+57 300 123 4567",
+    email: "contacto@golduke.com",
+    address: "Centro Comercial Joyero, Local 101",
+    addressExtra: "Medellín, Colombia",
+    cashier: "Administrador Golduke",
     shiftStatus: "Cerrado",
     shiftStartTime: "08:00 AM",
     cashInBox: 0,
     taxRate: 0,
     branding: {
-      appName: "CHARLES JOYAS",
+      appName: "GOLDUKE",
       appBadge: "SAS",
       logoUrl: "",
       primaryColor: "#0284c7",
@@ -54,8 +54,8 @@ const INITIAL_DATA = {
   users: [
     { 
       id: "USR-001", 
-      name: "Carlos Mendoza", 
-      email: "carlos@nexuspos.io", 
+      name: "Administrador Golduke", 
+      email: "admin@golduke.com", 
       password: "admin123",
       role: "Super Admin", 
       status: "Active", 
