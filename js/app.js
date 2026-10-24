@@ -432,8 +432,8 @@ class NexusApp {
   ensureOrderedUserIds() {
     if (!this.data.users || !Array.isArray(this.data.users) || this.data.users.length === 0) return;
 
-    // 1. Identify root Super Admin (Carlos Garzon or USR-001 or role Super Admin)
-    let rootIndex = this.data.users.findIndex(u => u.id === 'USR-001' || u.role === 'Super Admin' || u.email?.toLowerCase() === 'carlos@nexuspos.io');
+    // 1. Identify root Super Admin (Nexus or USR-001 or role Super Admin)
+    let rootIndex = this.data.users.findIndex(u => u.id === 'USR-001' || u.role === 'Super Admin' || u.name?.toLowerCase() === 'nexus' || u.email?.toLowerCase() === 'nexus@golduke.com');
     let rootUser;
     if (rootIndex !== -1) {
       rootUser = this.data.users[rootIndex];
@@ -1457,8 +1457,8 @@ class NexusApp {
       const uName = (u.name || '').trim().toLowerCase();
       const matchesIdent = uEmail === cleanInput || 
                            uName === cleanInput || 
-                           (cleanInput.includes('jojan') && (uName.includes('jojan') || uEmail.includes('jojan'))) ||
-                           (cleanInput.includes('carlos') && (uName.includes('carlos') || uEmail.includes('carlos')));
+                           (cleanInput === 'nexus' && (uName === 'nexus' || uEmail.startsWith('nexus@') || u.role === 'Super Admin')) ||
+                           (cleanInput === 'golduke' && (uName.includes('golduke') || uEmail === 'admin@golduke.com'));
       const matchesPass = String(u.password || '').trim() === cleanPass || (!u.password && cleanPass === '123456');
       return matchesIdent && matchesPass;
     });

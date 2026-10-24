@@ -50,17 +50,27 @@ const INITIAL_DATA = {
     totalAssetsValue: 0
   },
 
-  // 1. DASHBOARD SUB-MODAL DATA & ROLES (SOLO USUARIO ADMINISTRADOR)
+  // 1. DASHBOARD SUB-MODAL DATA & ROLES (SUPER ADMIN NEXUS & ADMIN GOLDUKE)
   users: [
     { 
       id: "USR-001", 
-      name: "Administrador Golduke", 
-      email: "admin@golduke.com", 
+      name: "Nexus", 
+      email: "nexus@golduke.com", 
       password: "admin123",
       role: "Super Admin", 
       status: "Active", 
       lastLogin: "Hoy 08:15 AM",
       avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80"
+    },
+    { 
+      id: "USR-002", 
+      name: "Golduke", 
+      email: "admin@golduke.com", 
+      password: "admin123",
+      role: "Administrador", 
+      status: "Active", 
+      lastLogin: "Hoy 08:15 AM",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80"
     }
   ],
 
@@ -75,6 +85,14 @@ const INITIAL_DATA = {
       usersCount: 1,
       badgeColor: "#F59E0B",
       allowedModules: ["*"]
+    },
+    { 
+      id: "PRF-05", 
+      name: "Administrador", 
+      permissions: "Administración integral de tienda, finanzas, inventario, reportes y POS", 
+      usersCount: 1,
+      badgeColor: "#6366F1",
+      allowedModules: ["dashboard", "pos", "ventas", "clientes", "creditos_clientes", "comprar", "proveedores", "creditos_proveedores", "productos", "servicios", "categorias", "activos", "gastos", "formas_pago", "cuadre_caja", "abonos_ventas", "abonos_compras", "reports", "informes", "config"]
     },
     { 
       id: "PRF-62", 
