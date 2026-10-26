@@ -1,23 +1,19 @@
 {
   "store": {
     "name": "Golduke Joyería",
+    "slogan": "Oro 18k",
     "legalName": "Golduke Joyería S.A.S.",
-    "nit": "901.888.777-1",
+    "taxId": "901.888.777-1",
+    "currency": "COP",
     "phone": "+57 300 123 4567",
     "email": "contacto@golduke.com",
     "address": "Centro Comercial Joyero, Local 101",
-    "city": "Medellín, Colombia",
-    "currency": "COP",
-    "receiptHeader": "GOLDUKE JOYERÍA S.A.S.\nNIT: 901.888.777-1\nAlta Joyería & Metales Finos",
-    "receiptFooter": "¡Gracias por su compra en Golduke!\nConserve este comprobante para su garantía.",
-    "cashInBox": 0,
+    "addressExtra": "Medellín, Colombia",
+    "cashier": "Golduke",
     "shiftStatus": "Cerrado",
     "shiftStartTime": "08:00 AM",
+    "cashInBox": 1752000,
     "taxRate": 0,
-    "thermalPrinterWidth": "80mm",
-    "autoPrintReceipt": true,
-    "theme": "luxury-dark",
-    "accentColor": "#D97706",
     "branding": {
       "appName": "GOLDUKE",
       "appBadge": "SAS",
@@ -34,18 +30,26 @@
       "oro18kNacional": 0,
       "balineria": 0,
       "plata925": 0
-    }
+    },
+    "nit": "901.888.777-1",
+    "city": "Medellín, Colombia",
+    "receiptHeader": "GOLDUKE JOYERÍA S.A.S.\nNIT: 901.888.777-1\nAlta Joyería & Metales Finos",
+    "receiptFooter": "¡Gracias por su compra en Golduke!\nConserve este comprobante para su garantía.",
+    "thermalPrinterWidth": "80mm",
+    "autoPrintReceipt": true,
+    "theme": "luxury-dark",
+    "accentColor": "#D97706"
   },
   "kpis": {
-    "salesToday": 0,
+    "salesToday": 852000,
     "salesTrend": "0.0%",
-    "transactionsToday": 0,
+    "transactionsToday": 2,
     "txTrend": "0.0%",
-    "inventoryValue": 0,
-    "avgCostPerGram": 0,
-    "avgCostGrams": 0,
-    "skusCount": 0,
-    "totalGrams": 0,
+    "inventoryValue": 1443000,
+    "avgCostPerGram": 390000,
+    "avgCostGrams": 3.7,
+    "skusCount": 5,
+    "totalGrams": 3.7,
     "netMargin": "0.0%",
     "marginTrend": "0.0%",
     "totalCustomers": 0,
@@ -86,6 +90,24 @@
       "lastLogin": "Ahora mismo",
       "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
       "customPermissions": null
+    },
+    {
+      "id": "USR-004",
+      "name": "Natalia Escobar Hernandez",
+      "email": "sduque629@gmail.com",
+      "password": "2398",
+      "role": "Cajero",
+      "customPermissions": [
+        "pos",
+        "ventas",
+        "productos",
+        "gastos",
+        "formas_pago",
+        "cuadre_caja"
+      ],
+      "status": "Active",
+      "lastLogin": "Ahora mismo",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80"
     }
   ],
   "customers": [],
@@ -164,7 +186,6 @@
       "permissions": "Ventas en POS, Cobros, Apertura y Cierre de Caja Chica",
       "usersCount": 0,
       "allowedModules": [
-        "dashboard",
         "pos",
         "ventas",
         "clientes",
@@ -231,21 +252,143 @@
   "customerCredits": [],
   "supplierCredits": [],
   "services": [],
-  "categories": [],
-  "products": [],
+  "categories": [
+    {
+      "id": "nacional",
+      "name": "Nacional",
+      "type": "general",
+      "itemsCount": 5,
+      "color": "#6366f1",
+      "availableGrams": 3.7,
+      "cost": 390000,
+      "totalValuation": 1443000
+    }
+  ],
+  "products": [
+    {
+      "id": "PRD-MVMZTNT4-PNF0",
+      "sku": "005",
+      "name": "Dj",
+      "measureType": "Unidades",
+      "weightUnit": "u.",
+      "unit": "u.",
+      "pieceWeight": 0.71,
+      "weight": 0.71,
+      "category": "nacional",
+      "categoryName": "Nacional",
+      "supplier": "ANONIMO",
+      "cost": 390000,
+      "price": 0,
+      "stock": 0,
+      "isExtra": false,
+      "minStock": 2,
+      "status": "out_of_stock",
+      "sold30d": 3,
+      "monthlySales": {
+        "2026-10": {
+          "24": 1,
+          "25": 2
+        }
+      }
+    },
+    {
+      "id": "PRD-MVMZSVYZ-MN09",
+      "sku": "004",
+      "name": "Dj",
+      "measureType": "Unidades",
+      "weightUnit": "u.",
+      "unit": "u.",
+      "pieceWeight": 1.21,
+      "weight": 1.21,
+      "category": "nacional",
+      "categoryName": "Nacional",
+      "supplier": "ANONIMO",
+      "cost": 390000,
+      "price": 0,
+      "stock": 1,
+      "isExtra": false,
+      "minStock": 2,
+      "status": "active"
+    },
+    {
+      "id": "PRD-MVMZSGIX-OFR9",
+      "sku": "003",
+      "name": "Dj",
+      "measureType": "Unidades",
+      "weightUnit": "u.",
+      "unit": "u.",
+      "pieceWeight": 0.9,
+      "weight": 0.9,
+      "category": "nacional",
+      "categoryName": "Nacional",
+      "supplier": "ANONIMO",
+      "cost": 390000,
+      "price": 0,
+      "stock": 1,
+      "isExtra": false,
+      "minStock": 2,
+      "status": "active"
+    },
+    {
+      "id": "PRD-MVMZS0I0-QC2Q",
+      "sku": "002",
+      "name": "Dj",
+      "measureType": "Unidades",
+      "weightUnit": "u.",
+      "unit": "u.",
+      "pieceWeight": 0.76,
+      "weight": 0.76,
+      "category": "nacional",
+      "categoryName": "Nacional",
+      "supplier": "ANONIMO",
+      "cost": 390000,
+      "price": 0,
+      "stock": 1,
+      "isExtra": false,
+      "minStock": 2,
+      "status": "active"
+    },
+    {
+      "id": "PRD-MVMZQ1S5-E9F5",
+      "sku": "001",
+      "name": "Dj",
+      "measureType": "Unidades",
+      "weightUnit": "u.",
+      "unit": "u.",
+      "pieceWeight": 0.83,
+      "weight": 0.83,
+      "category": "nacional",
+      "categoryName": "Nacional",
+      "supplier": "ANONIMO",
+      "cost": 390000,
+      "price": 0,
+      "stock": 1,
+      "isExtra": false,
+      "minStock": 2,
+      "status": "active"
+    }
+  ],
   "assets": [],
   "cashShiftLog": {
     "shiftId": "TURNO-001",
-    "openedAt": "08:00 AM",
-    "openingCash": 0,
-    "cashSales": 0,
+    "openedAt": "05:58 p.m.",
+    "openingCash": 500000,
+    "cashSales": 1252000,
     "cardSales": 0,
     "qrSales": 0,
     "cashExpenses": 0,
-    "expectedCashInDrawer": 0,
+    "expectedCashInDrawer": 1752000,
     "actualCashInDrawer": 0,
     "discrepancy": 0,
-    "status": "Cerrado"
+    "status": "Abierto",
+    "openingCard": 500000,
+    "openingAccount": "CUENTA GOLDUKE JOYERÍA SAS",
+    "openingTotal": 1000000,
+    "expectedCardInAccount": 500000,
+    "openedBy": "Salome Duke",
+    "openedDate": "2026-10-24",
+    "openedTimestamp": 1792882691257,
+    "openedIso": "2026-10-24T22:58:11.257Z"
   },
   "cashShiftsHistory": [],
   "abonosVentas": [],
@@ -259,8 +402,158 @@
     "totalLiabilities": 0,
     "netEquity": 0
   },
-  "stockRadarData": [],
-  "recentTransactions": [],
+  "stockRadarData": {
+    "categories": [
+      "NACIONAL",
+      "Oro 18K Italiano & Ley",
+      "Oro 14K Especial",
+      "Plata 925 Fina",
+      "Piedras Preciosas & Diamantes",
+      "Relojería de Lujo"
+    ],
+    "turnover": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stockLevel": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "profitability": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stockRisk": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "recentTransactions": [
+    {
+      "id": "TX-98283",
+      "customer": "Cliente Mostrador",
+      "customerDoc": "",
+      "customerDocType": "CC",
+      "customerAddress": "",
+      "customerPhone": "",
+      "time": "15:18:52",
+      "date": "25/10/2026",
+      "type": "Venta POS Joyería",
+      "itemsCount": 0.71,
+      "items": [
+        {
+          "id": "PRD-MVMZTNT4-PNF0",
+          "sku": "005",
+          "name": "Dj",
+          "qty": 0.71,
+          "quantity": 0.71,
+          "unit": "u.",
+          "measureType": "Unidades",
+          "pieceWeight": 0.71,
+          "price": 600000,
+          "total": 426000
+        }
+      ],
+      "subtotal": 426000,
+      "tax": 0,
+      "total": 426000,
+      "bankFeePercent": 0,
+      "bankFeeAmount": 0,
+      "totalChargedToCustomer": 426000,
+      "bankWithheld": 0,
+      "paymentMethod": "Efectivo",
+      "cashier": "Golduke",
+      "status": "completed"
+    },
+    {
+      "id": "TX-91370",
+      "customer": "Cliente Mostrador",
+      "customerDoc": "",
+      "customerDocType": "CC",
+      "customerAddress": "",
+      "customerPhone": "",
+      "time": "15:18:50",
+      "date": "25/10/2026",
+      "type": "Venta POS Joyería",
+      "itemsCount": 0.71,
+      "items": [
+        {
+          "id": "PRD-MVMZTNT4-PNF0",
+          "sku": "005",
+          "name": "Dj",
+          "qty": 0.71,
+          "quantity": 0.71,
+          "unit": "u.",
+          "measureType": "Unidades",
+          "pieceWeight": 0.71,
+          "price": 600000,
+          "total": 426000
+        }
+      ],
+      "subtotal": 426000,
+      "tax": 0,
+      "total": 426000,
+      "bankFeePercent": 0,
+      "bankFeeAmount": 0,
+      "totalChargedToCustomer": 426000,
+      "bankWithheld": 0,
+      "paymentMethod": "Efectivo",
+      "cashier": "Golduke",
+      "status": "completed"
+    },
+    {
+      "id": "TX-91201",
+      "customer": "Cliente Mostrador",
+      "customerDoc": "",
+      "customerDocType": "CC",
+      "customerAddress": "",
+      "customerPhone": "",
+      "time": "05:58:17 p.m.",
+      "date": "24/10/2026",
+      "type": "Venta POS Joyería",
+      "itemsCount": 0.71,
+      "items": [
+        {
+          "id": "PRD-MVMZTNT4-PNF0",
+          "sku": "005",
+          "name": "Dj",
+          "qty": 0.71,
+          "quantity": 0.71,
+          "unit": "u.",
+          "measureType": "Unidades",
+          "pieceWeight": 0.71,
+          "price": 563380,
+          "total": 400000
+        }
+      ],
+      "subtotal": 400000,
+      "tax": 0,
+      "total": 400000,
+      "bankFeePercent": 0,
+      "bankFeeAmount": 0,
+      "totalChargedToCustomer": 400000,
+      "bankWithheld": 0,
+      "paymentMethod": "Efectivo",
+      "cashier": "Salome Duke",
+      "status": "completed"
+    }
+  ],
   "financialLedger": [],
   "chartData": {
     "salesLabels": [
@@ -282,6 +575,6 @@
       0
     ]
   },
-  "updatedAt": "2026-10-24T22:53:54.040Z",
+  "updatedAt": "2026-10-26T18:50:40.144Z",
   "sales": []
 }

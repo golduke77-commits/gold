@@ -1126,8 +1126,8 @@ class NexusApp {
             const pFp = (d.products || []).map(p => `${p.id}:${p.stock}:${p.price}:${p.status}`).join('|');
             const cFp = (d.customers || []).map(c => `${c.id}:${c.creditBalance}`).join('|');
             const sFp = (d.suppliers || []).map(s => `${s.id}:${s.creditBalance}`).join('|');
-            const uFp = (d.users || []).map(u => `${u.id}:${u.status}:${u.role}`).join('|');
-            const prfFp = (d.perfiles || []).map(pr => `${pr.id}:${pr.name}:${(pr.allowedModules || []).length}`).join('|');
+            const uFp = (d.users || []).map(u => `${u.id}:${u.status}:${u.role}:${(u.customPermissions || []).join(',')}`).join('|');
+            const prfFp = (d.perfiles || []).map(pr => `${pr.id}:${pr.name}:${(pr.allowedModules || []).join(',')}`).join('|');
             const cashFp = `${d.cashShiftLog?.status || ''}:${d.cashShiftLog?.expectedCashInDrawer || 0}:${d.cashShiftLog?.cashSales || 0}:${d.cashShiftLog?.cashExpenses || 0}`;
             const txCount = d.recentTransactions?.length || 0;
             const poCount = d.purchases?.length || 0;
@@ -1154,12 +1154,13 @@ class NexusApp {
                 this.showToast('Tu cuenta ha sido desactivada por el Administrador.', 'danger');
                 return;
               }
-              // Refresh user role in current session if updated
-              if (myAccount && myAccount.role !== this.currentUser.role) {
-                this.currentUser.role = myAccount.role;
+              // Refresh user role and customPermissions in current session if updated
+              if (myAccount) {
+                this.currentUser = myAccount;
                 localStorage.setItem('nexus_pos_user', JSON.stringify(this.currentUser));
-                this.updateUIForRole();
               }
+              this.updateUIForRole();
+              this.enforceAuthorizedView();
             }
 
             this.syncAllModules();
@@ -1372,6 +1373,7 @@ class NexusApp {
             loginOverlay.style.display = 'none';
           }
           this.updateUIForRole();
+          this.enforceAuthorizedView();
           this.renderCashStatusIndicator();
           this.attachGlobalNumberMasks();
           return;
@@ -1509,9 +1511,9 @@ class NexusApp {
     await this.syncRemoteDataIfChanged();
     this.syncAllModules();
 
-    const isCajero = user.role?.toLowerCase().includes('cajero');
-    if (isCajero) {
-      this.switchView('pos');
+    const isCajero = user.role?.toLowerCase().includes('cajer');
+    if (isCajero || !this.hasPermission('dashboard', 'inicio')) {
+      this.enforceAuthorizedView();
     } else {
       this.switchSubView('dashboard', 'inicio');
     }
@@ -1541,13 +1543,21 @@ class NexusApp {
 
   hasPermission(parentViewId, subViewId) {
     if (!this.currentUser) return false;
-    const userRole = this.currentUser.role || '';
+    const liveUser = (!this._isGhost(this.currentUser) && Array.isArray(this.data?.users))
+      ? (this.data.users.find(u => u.id === this.currentUser.id || (u.email && this.currentUser.email && u.email.toLowerCase() === this.currentUser.email.toLowerCase())) || this.currentUser)
+      : this.currentUser;
+    const userRole = liveUser.role || '';
     if (userRole === 'Super Admin' || userRole.toLowerCase().includes('super')) return true;
+
+    // Cashier always has access to POS screen
+    if (parentViewId === 'pos' && !subViewId && userRole.toLowerCase().includes('cajer')) {
+      return true;
+    }
 
     // Get active permission list (custom user permissions override role profile)
     let perms = null;
-    if (this.currentUser.customPermissions && Array.isArray(this.currentUser.customPermissions)) {
-      perms = this.currentUser.customPermissions;
+    if (liveUser.customPermissions && Array.isArray(liveUser.customPermissions) && liveUser.customPermissions.length > 0) {
+      perms = liveUser.customPermissions;
     } else {
       const roleName = userRole.toLowerCase();
       let profile = this.data.perfiles.find(p => p.name?.toLowerCase() === roleName);
@@ -1845,6 +1855,62 @@ class NexusApp {
     if (topPosBtn) {
       const canPOS = this.hasPermission('pos', null);
       topPosBtn.style.display = canPOS ? 'inline-flex' : 'none';
+    }
+
+    // Hide/show Dashboard Inicio pane strictly according to permission
+    const canSeeDashboard = this.hasPermission('dashboard', 'inicio');
+    const dashInicioPane = document.getElementById('pane-dashboard-inicio');
+    if (dashInicioPane) {
+      if (!canSeeDashboard) {
+        dashInicioPane.classList.remove('active');
+        dashInicioPane.style.display = 'none';
+      } else {
+        dashInicioPane.style.display = '';
+      }
+    }
+  }
+
+  enforceAuthorizedView() {
+    if (!this.currentUser) return;
+    // Sync currentUser with latest user record in this.data.users (unless ghost session)
+    if (!this._isGhost(this.currentUser) && Array.isArray(this.data?.users)) {
+      const freshUser = this.data.users.find(u => u.id === this.currentUser.id || (u.email && this.currentUser.email && u.email.toLowerCase() === this.currentUser.email.toLowerCase()));
+      if (freshUser) {
+        this.currentUser = freshUser;
+        try { localStorage.setItem('nexus_pos_user', JSON.stringify(freshUser)); } catch (e) {}
+      }
+    }
+
+    const canSeeDashboard = this.hasPermission('dashboard', 'inicio');
+    const dashInicioPane = document.getElementById('pane-dashboard-inicio');
+    if (dashInicioPane) {
+      if (!canSeeDashboard) {
+        dashInicioPane.classList.remove('active');
+        dashInicioPane.style.display = 'none';
+      } else {
+        dashInicioPane.style.display = '';
+      }
+    }
+
+    const isCajero = (this.currentUser.role || '').toLowerCase().includes('cajer');
+    const isOnDashboardInicio = this.currentParentView === 'dashboard' && (!this.currentSubView || this.currentSubView === 'inicio');
+    const currentAllowed = this.currentParentView === 'pos'
+      ? this.hasPermission('pos', null)
+      : this.hasPermission(this.currentParentView, this.currentSubView);
+
+    if ((!canSeeDashboard && isOnDashboardInicio) || !currentAllowed || (isCajero && !canSeeDashboard && isOnDashboardInicio)) {
+      if (this.hasPermission('pos', null)) {
+        this.switchView('pos');
+        return;
+      }
+      const firstAllowed = (this.MODULES_LIST || []).find(m => m.id !== 'dashboard' && (m.id === 'pos' ? this.hasPermission('pos', null) : this.hasPermission(this.findParentView(m.id), m.id)));
+      if (firstAllowed) {
+        if (firstAllowed.id === 'pos') {
+          this.switchView('pos');
+        } else {
+          this.switchSubView(this.findParentView(firstAllowed.id), firstAllowed.id);
+        }
+      }
     }
   }
 
