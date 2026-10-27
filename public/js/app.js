@@ -759,7 +759,7 @@ class NexusApp {
     const isPesaje = (p.measureType || 'Pesaje') === 'Pesaje';
     if (!isPesaje) {
       const pieceWeight = parseFloat(String(p.pieceWeight !== undefined && p.pieceWeight !== null ? p.pieceWeight : (p.weight || 0)).replace(',', '.')) || 0;
-      return pieceWeight > 0 ? (stock * pieceWeight) : 0;
+      return pieceWeight > 0 ? (Math.round(stock * pieceWeight * 100) / 100) : 0;
     }
     const unit = (p.weightUnit || p.unit || 'g').toLowerCase();
     if (unit === 'kg') return stock * 1000;
@@ -3009,11 +3009,14 @@ class NexusApp {
             cat.cost = Math.max(0, Math.round(newCost * 100) / 100);
           }
 
-          // Cascade name update to all products in inventory
+          // Cascade name and cost update to all products in inventory
           (this.data.products || []).forEach(p => {
             if (p.category === cat.id || p.categoryName === oldName) {
               p.category = cat.id;
               p.categoryName = newName;
+              if (cat.cost !== undefined && cat.cost >= 0) {
+                p.cost = cat.cost;
+              }
             }
           });
 
