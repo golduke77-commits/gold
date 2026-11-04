@@ -8648,12 +8648,12 @@ class NexusApp {
       } else {
         unidadesItemCount++;
         const pWeight = Number(it.pieceWeight || p?.pieceWeight || p?.weight) || 0;
-        const u = (pWeight > 0 && qty >= pWeight) 
-          ? Math.round((qty / pWeight) * 100) / 100 
-          : (qty || 1);
+        const u = Number(it.unitsDeducted) || ((pWeight > 0) 
+          ? Math.max(1, Math.round(qty / pWeight)) 
+          : Math.max(1, Math.round(qty || 1)));
         unidadesCount += u;
         if (pWeight > 0) {
-          unidadesGrams += (u * pWeight);
+          unidadesGrams += (qty > 0 ? qty : (u * pWeight));
         } else if (qty > 0 && qty !== u) {
           unidadesGrams += qty;
         }
@@ -9084,9 +9084,11 @@ class NexusApp {
         const isPesaje = (prod.measureType || 'Pesaje') === 'Pesaje';
         const pWeight = parseFloat(String(prod.pieceWeight !== undefined && prod.pieceWeight !== null ? prod.pieceWeight : (prod.weight || 0)).replace(',', '.')) || 0;
         const isUnitWithWeight = !isPesaje && pWeight > 0;
-        const unitsToAdd = isUnitWithWeight ? (Math.round((soldQty / pWeight) * 100) / 100) : soldQty;
+        const unitsToAdd = Number(item.unitsDeducted) || (isUnitWithWeight ? Math.max(1, Math.round(soldQty / pWeight)) : (isPesaje ? soldQty : Math.max(1, Math.round(soldQty))));
 
-        prod.stock = Math.round(((Number(prod.stock) || 0) + unitsToAdd) * 100) / 100;
+        prod.stock = isPesaje
+          ? Math.round(((Number(prod.stock) || 0) + unitsToAdd) * 100) / 100
+          : Math.round((Number(prod.stock) || 0) + unitsToAdd);
         const minStock = Number(prod.minStock) || 1;
         prod.status = prod.stock > minStock ? 'active' : (prod.stock > 0 ? 'low_stock' : 'out_of_stock');
         prod.sold30d = Math.max(0, (Number(prod.sold30d) || 0) - unitsToAdd);
@@ -24828,7 +24830,7 @@ class NexusApp {
 
     if (elQtyLabel) {
       if (isUnitWithWeight) {
-        elQtyLabel.textContent = `📦 Cantidad de Unidades a Vender (Peso: ${pWeight} g/u) *`;
+        elQtyLabel.textContent = `⚖️ Gramos de la Pieza a Facturar (Peso base: ${pWeight} g/u) *`;
       } else if (isPesaje) {
         elQtyLabel.textContent = '⚖️ Cantidad / Gramos a Vender *';
       } else {
@@ -25365,7 +25367,7 @@ class NexusApp {
       subtotal += itemTotal;
       const step = isPesaje ? (item.product.stock < 1 ? 0.05 : 0.10) : (isUnitWithWeight ? pWeight : 1);
       const basePrice = Number(item.basePrice !== undefined ? item.basePrice : item.product.price) || 0;
-      const unitsCount = isUnitWithWeight ? Math.round((item.qty / pWeight) * 100) / 100 : item.qty;
+      const unitsCount = isUnitWithWeight ? Math.max(1, Math.round(item.qty / pWeight)) : item.qty;
 
       return `
         <div class="cart-item">
@@ -25481,7 +25483,7 @@ class NexusApp {
       }
       const pPrice = this.getCartItemPrice(item);
       const itemSubtotal = pPrice * item.qty;
-      const unitsCount = isUnitWithWeight ? Math.round((qtyNum / pWeight) * 100) / 100 : qtyNum;
+      const unitsCount = isUnitWithWeight ? Math.max(1, Math.round(qtyNum / pWeight)) : qtyNum;
 
       return `
         <div class="checkout-item-row" style="display:flex; justify-content:space-between; align-items:center; background:var(--card-bg); padding:0.55rem 0.75rem; border-radius:6px; border:1px solid var(--border-color);">
@@ -26304,8 +26306,20 @@ class NexusApp {
         const isPesaje = (p.measureType || 'Pesaje') === 'Pesaje';
         const pWeight = parseFloat(String(p.pieceWeight !== undefined && p.pieceWeight !== null ? p.pieceWeight : (p.weight || 0)).replace(',', '.')) || 0;
         const isUnitWithWeight = !isPesaje && pWeight > 0;
-        const unitsToDeduct = isUnitWithWeight ? (Math.round((soldQty / pWeight) * 100) / 100) : soldQty;
-        p.stock = Math.round(((Number(p.stock) || 0) - unitsToDeduct) * 100) / 100;
+        const currentStockNum = Number(p.stock) || 0;
+        const unitsToDeduct = isUnitWithWeight
+          ? Math.min(Math.max(1, Math.round(currentStockNum || 1)), Math.max(1, Math.round(soldQty / pWeight)))
+          : (isPesaje ? soldQty : Math.max(1, Math.round(soldQty)));
+        cartItem._unitsDeducted = unitsToDeduct;
+
+        if (isPesaje) {
+          p.stock = Math.round((currentStockNum - unitsToDeduct) * 100) / 100;
+        } else {
+          // Productos por Unidades siempre descuentan unidades enteras; si queda < 1 unidad pasa a 0 (Agotado)
+          const remainingUnits = Math.round(currentStockNum - unitsToDeduct);
+          p.stock = remainingUnits >= 1 ? remainingUnits : 0;
+        }
+
         if (p.stock <= 0) {
           p.stock = 0;
           p.status = 'out_of_stock';
@@ -26420,6 +26434,7 @@ class NexusApp {
           name: i.product.name,
           qty: i.qty,
           quantity: i.qty,
+          unitsDeducted: i._unitsDeducted || undefined,
           unit: unit,
           measureType: i.product?.measureType || 'Pesaje',
           pieceWeight: Number(i.product?.pieceWeight || i.product?.weight) || 0,
@@ -26453,7 +26468,7 @@ class NexusApp {
       const isUnitWithWeight = !isPesaje && pWeight > 0;
       const unit = (isPesaje || isUnitWithWeight) ? 'g' : (i.product.weightUnit || 'u.');
       const pPrice = this.getCartItemPrice(i);
-      const unitsCount = isUnitWithWeight ? Math.round((i.qty / pWeight) * 100) / 100 : i.qty;
+      const unitsCount = isUnitWithWeight ? Math.max(1, Math.round(i.qty / pWeight)) : i.qty;
       const formattedQty = `${this.formatNumberWithCommas(i.qty, isPesaje || isUnitWithWeight)}${unit}`;
       const formattedUnitPrice = `${this.formatCurrency(pPrice)}/${unit}`;
       const formattedLineTotal = this.formatCurrency(pPrice * i.qty);
