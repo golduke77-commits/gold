@@ -237,12 +237,73 @@ app.post('/api/data', async (req, res) => {
       return res.status(400).json({ error: 'Payload de datos inválido o incompleto: estructura requerida ausente' });
     }
 
-    data.updatedAt = new Date().toISOString();
-    saveLocalDb(data);
+    const syncMeta = (data._syncMeta && typeof data._syncMeta === 'object') ? data._syncMeta : {};
+    delete data._syncMeta;
 
     if (!mongoConnected) {
       await ensureDbConnected();
     }
+
+    // 3. Server-side concurrency guard: protect recent POS transactions and stock deductions
+    // against overwrites from stale tabs or concurrent mobile/desktop saves.
+    try {
+      let existingContent = null;
+      if (mongoConnected) {
+        const existingDoc = await DataModel.findOne({ key: 'main_store' }).lean();
+        if (existingDoc && existingDoc.content) {
+          existingContent = existingDoc.content;
+        }
+      } else {
+        existingContent = loadLocalDb();
+      }
+
+      if (existingContent && Array.isArray(existingContent.recentTransactions) && Array.isArray(data.recentTransactions)) {
+        const deletedTxSet = new Set(Array.isArray(syncMeta.deletedTxIds) ? syncMeta.deletedTxIds.map(String) : []);
+        const manualOverrideSet = new Set(Array.isArray(syncMeta.manualStockOverrideIds) ? syncMeta.manualStockOverrideIds.map(String) : []);
+        const incomingTxIds = new Set(data.recentTransactions.filter(Boolean).map(t => String(t.id)));
+        const missingTxs = existingContent.recentTransactions.filter(t => t && t.id && !incomingTxIds.has(String(t.id)) && !deletedTxSet.has(String(t.id)));
+
+        if (missingTxs.length > 0) {
+          data.recentTransactions = [...missingTxs, ...data.recentTransactions];
+
+          // If this payload was missing recent POS transactions, ensure the stock deductions of those
+          // transactions are not reverted by a stale product snapshot on the client.
+          const existingProdMap = new Map((existingContent.products || []).filter(Boolean).map(p => [String(p.id), p]));
+          const affectedProdIds = new Set();
+          missingTxs.forEach(tx => {
+            if (tx.status === 'Reversada' || tx.reversada) return;
+            (tx.items || []).forEach(item => {
+              if (item && item.id) affectedProdIds.add(String(item.id));
+            });
+          });
+
+          (data.products || []).forEach(incP => {
+            if (!incP || !incP.id) return;
+            const pId = String(incP.id);
+            if (!affectedProdIds.has(pId) || manualOverrideSet.has(pId)) return;
+            const exP = existingProdMap.get(pId);
+            if (!exP) return;
+            const incStock = parseFloat(String(incP.stock ?? 0).replace(',', '.')) || 0;
+            const exStock = parseFloat(String(exP.stock ?? 0).replace(',', '.')) || 0;
+            if (exStock < incStock) {
+              incP.stock = exStock;
+              incP.sold30d = Math.max(Number(incP.sold30d) || 0, Number(exP.sold30d) || 0);
+              if (exP.monthlySales) incP.monthlySales = exP.monthlySales;
+              if (incP.status !== 'inactive') {
+                const isPesaje = (incP.measureType || 'Pesaje') === 'Pesaje';
+                const minS = incP.minStock !== undefined ? (parseFloat(String(incP.minStock).replace(',', '.')) || 0) : (isPesaje ? 0.5 : 2);
+                incP.status = incP.stock <= 0 ? 'out_of_stock' : (incP.stock <= minS ? 'low_stock' : 'active');
+              }
+            }
+          });
+        }
+      }
+    } catch (mergeErr) {
+      console.warn('[Golduke Server] Advertencia en protección concurrente:', mergeErr.message);
+    }
+
+    data.updatedAt = new Date().toISOString();
+    saveLocalDb(data);
 
     if (mongoConnected) {
       await DataModel.findOneAndUpdate(

@@ -127,7 +127,19 @@ class NexusApp {
 
   formatNumberWithCommas(val, allowDecimals = false) {
     if (val === null || val === undefined || val === '') return '';
-    const str = String(val).replace(/,/g, '').trim();
+    let rawStr = String(val).trim();
+    if (rawStr === '') return '';
+
+    if (allowDecimals && !rawStr.includes('.') && rawStr.includes(',')) {
+      // Si el usuario escribe coma decimal (ej. "0,5", "0,85", "12,") en teclados móviles o en español,
+      // convertirla a punto decimal antes de limpiar comas de miles.
+      const commaCount = (rawStr.match(/,/g) || []).length;
+      if (commaCount === 1 && (/^-?0,\d*$/.test(rawStr) || /^-?\d+,(\d{0,2})$/.test(rawStr))) {
+        rawStr = rawStr.replace(',', '.');
+      }
+    }
+
+    const str = rawStr.replace(/,/g, '').trim();
     if (str === '') return '';
     
     if (allowDecimals) {
@@ -186,7 +198,12 @@ class NexusApp {
         str = str.replace(/\./g, '').replace(',', '.');
       }
     } else if (str.includes(',')) {
-      str = str.replace(/,/g, '');
+      const commaCount = (str.match(/,/g) || []).length;
+      if (commaCount === 1 && /^-?(?:0,\d+|\d+,\d{1,2})$/.test(str)) {
+        str = str.replace(',', '.');
+      } else {
+        str = str.replace(/,/g, '');
+      }
     }
     const n = parseFloat(str);
     return isNaN(n) ? 0 : n;
@@ -201,8 +218,15 @@ class NexusApp {
     }
 
     const handleInput = () => {
-      const rawVal = input.value;
+      let rawVal = input.value;
       const cursorPos = input.selectionStart || 0;
+
+      if (allowDecimals && !rawVal.includes('.') && rawVal.includes(',')) {
+        const commaCount = (rawVal.match(/,/g) || []).length;
+        if (commaCount === 1 && (/^-?0,\d*$/.test(rawVal) || /^-?\d+,(\d{0,2})$/.test(rawVal))) {
+          rawVal = rawVal.replace(',', '.');
+        }
+      }
 
       const rawBeforeCursor = rawVal.slice(0, cursorPos);
       const digitsBeforeCursor = rawBeforeCursor.replace(/,/g, '').length;
@@ -234,6 +258,20 @@ class NexusApp {
     input.addEventListener('input', handleInput);
 
     input.addEventListener('keydown', (e) => {
+      if (allowDecimals && e.key === ',' && !input.value.includes('.')) {
+        e.preventDefault();
+        const selStart = input.selectionStart ?? input.value.length;
+        const selEnd = input.selectionEnd ?? input.value.length;
+        const before = input.value.slice(0, selStart);
+        const after = input.value.slice(selEnd);
+        input.value = `${before || '0'}.${after}`;
+        const newPos = (before ? selStart : 1) + 1;
+        try {
+          input.setSelectionRange(newPos, newPos);
+        } catch (_) {}
+        input.dispatchEvent(new Event('input'));
+        return;
+      }
       if (e.key === 'Backspace') {
         const selStart = input.selectionStart;
         const selEnd = input.selectionEnd;
@@ -359,17 +397,38 @@ class NexusApp {
     const category = this.normalizeSearchStr(p.categoryName || p.category);
     const supplier = this.normalizeSearchStr(p.supplier);
 
+    const stemToken = (tok) => {
+      if (!tok) return '';
+      return tok
+        .replace(/^(balin)(?:eria|es)$/, '$1')
+        .replace(/^(barril)(?:es|eria)$/, '$1')
+        .replace(/^(top)(?:itos|ito|os)$/, '$1')
+        .replace(/^(ani)(?:llos|llo)$/, '$1')
+        .replace(/^(puls)(?:eras|era|os)$/, '$1')
+        .replace(/^(cad)(?:enas|ena)$/, '$1')
+        .replace(/^(manill)(?:as|eria)$/, '$1');
+    };
+
+    const matchesTok = (tok) => {
+      if (name.includes(tok) || sku.includes(tok) || id.includes(tok) || barcode.includes(tok) || category.includes(tok) || supplier.includes(tok)) {
+        return true;
+      }
+      const stem = stemToken(tok);
+      if (stem && stem !== tok) {
+        return name.includes(stem) || sku.includes(stem) || category.includes(stem);
+      }
+      return false;
+    };
+
     // Direct match against query
-    if (name.includes(q) || sku.includes(q) || id.includes(q) || barcode.includes(q) || category.includes(q) || supplier.includes(q)) {
+    if (matchesTok(q)) {
       return true;
     }
 
-    // Multi-token match (allows searching e.g. "topo 2026" or "balineria 1")
+    // Multi-token match (allows searching e.g. "topo 2026" or "balineria 5" or "balines 4")
     const tokens = q.split(/\s+/).filter(Boolean);
-    if (tokens.length > 1) {
-      return tokens.every(tok => 
-        name.includes(tok) || sku.includes(tok) || id.includes(tok) || barcode.includes(tok) || category.includes(tok) || supplier.includes(tok)
-      );
+    if (tokens.length >= 1) {
+      return tokens.every(tok => matchesTok(tok));
     }
 
     return false;
@@ -554,9 +613,33 @@ class NexusApp {
         if (!p.supplier) p.supplier = 'Joyeros Italianos S.A.S.';
         if (!p.sku) p.sku = '001';
 
-        if (!this.data.categories.some(c => c.id === p.category)) {
-          p.category = 'oro18k';
-          p.categoryName = 'Oro 18K Italiano & Ley';
+        const rawStock = parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0;
+        const isPesaje = (p.measureType || 'Pesaje') === 'Pesaje';
+        p.stock = isPesaje
+          ? (rawStock <= 0.004 ? 0 : Math.round(rawStock * 100) / 100)
+          : Math.max(0, Math.round(rawStock));
+
+        if (p.status !== 'inactive') {
+          const minS = p.minStock !== undefined ? (parseFloat(String(p.minStock).replace(',', '.')) || 0) : (isPesaje ? 0.5 : 2);
+          if (p.stock <= 0) {
+            p.status = 'out_of_stock';
+          } else if (p.stock <= minS) {
+            p.status = 'low_stock';
+          } else {
+            p.status = 'active';
+          }
+        }
+
+        const matchedCat = (this.data.categories || []).find(c =>
+          String(c.id || '').toLowerCase().trim() === String(p.category || '').toLowerCase().trim() ||
+          String(c.name || '').toLowerCase().trim() === String(p.categoryName || p.category || '').toLowerCase().trim()
+        );
+        if (matchedCat) {
+          p.category = matchedCat.id;
+          p.categoryName = matchedCat.name;
+        } else if (this.data.categories && this.data.categories.length > 0) {
+          p.category = this.data.categories[0].id;
+          p.categoryName = this.data.categories[0].name;
         }
       });
       // NOTE: Empty array is valid for clean production data
@@ -678,7 +761,7 @@ class NexusApp {
     } catch(e) {}
 
     try {
-      const res = await fetch('/api/data');
+      const res = await fetch('/api/data', { cache: 'no-store' });
       if (res.ok) {
         const dbData = await res.json();
         if (dbData && dbData.products && Array.isArray(dbData.products)) {
@@ -689,6 +772,7 @@ class NexusApp {
           this.data.balanceSheet = Object.assign({}, INITIAL_DATA.balanceSheet, dbData.balanceSheet || {});
           this.data.stockRadarData = Object.assign({}, INITIAL_DATA.stockRadarData, dbData.stockRadarData || {});
           this.sanitizeLoadedData();
+          this.captureSyncBaseline(this.data);
           try {
             localStorage.setItem('nexus_pos_data', JSON.stringify(this.data));
           } catch (e) {}
@@ -708,9 +792,11 @@ class NexusApp {
       this.data.balanceSheet = Object.assign({}, INITIAL_DATA.balanceSheet, localData.balanceSheet || {});
       this.data.stockRadarData = Object.assign({}, INITIAL_DATA.stockRadarData, localData.stockRadarData || {});
       this.sanitizeLoadedData();
+      this.captureSyncBaseline(this.data);
       console.log('[NexusApp] Persistencia cargada desde LocalStorage.');
     }
     this.sanitizeLoadedData();
+    this.captureSyncBaseline(this.data);
   }
 
   syncAllModules() {
@@ -992,6 +1078,214 @@ class NexusApp {
     this.data.supplierCredits = consolidated;
   }
 
+  captureSyncBaseline(sourceData = this.data) {
+    if (!sourceData || typeof sourceData !== 'object') return;
+    this._baselineUpdatedAt = sourceData.updatedAt || null;
+    this._baselineProducts = new Map();
+    this._baselineProductIds = new Set();
+
+    (sourceData.products || []).forEach(p => {
+      if (!p || !p.id) return;
+      const id = String(p.id);
+      this._baselineProductIds.add(id);
+      this._baselineProducts.set(id, {
+        stock: parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0,
+        sold30d: parseFloat(String(p.sold30d ?? 0).replace(',', '.')) || 0,
+        status: p.status,
+        json: JSON.stringify(p)
+      });
+    });
+
+    this._baselineTxIds = new Set((sourceData.recentTransactions || []).filter(Boolean).map(t => String(t.id)));
+    this._baselinePoIds = new Set((sourceData.purchases || []).filter(Boolean).map(p => String(p.id)));
+    this._baselineExpIds = new Set((sourceData.expenses || []).filter(Boolean).map(e => String(e.id)));
+    this._baselineAbonosVentasIds = new Set((sourceData.abonosVentas || []).filter(Boolean).map(a => String(a.id)));
+    this._baselineAbonosComprasIds = new Set((sourceData.abonosCompras || []).filter(Boolean).map(a => String(a.id)));
+    this._baselineCashShift = JSON.parse(JSON.stringify(sourceData.cashShiftLog || {}));
+    this._baselineCashShiftJson = JSON.stringify(sourceData.cashShiftLog || {});
+    this._baselineCashInBox = Number(sourceData.store?.cashInBox) || 0;
+
+    if (!this._manualStockOverrideIds) this._manualStockOverrideIds = new Set();
+    if (!this._deletedProductIds) this._deletedProductIds = new Set();
+    if (!this._deletedTxIds) this._deletedTxIds = new Set();
+  }
+
+  async mergeWithRemoteBeforeSave() {
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      if (!res.ok) return;
+      const remote = await res.json();
+      if (!remote || !Array.isArray(remote.products)) return;
+
+      const remoteProdMap = new Map(remote.products.filter(Boolean).map(p => [String(p.id), p]));
+      const localProdIds = new Set();
+
+      // 1. Merge Products (protect concurrent POS stock deductions across terminals/tabs)
+      (this.data.products || []).forEach(localP => {
+        if (!localP || !localP.id) return;
+        const pId = String(localP.id);
+        localProdIds.add(pId);
+        const remoteP = remoteProdMap.get(pId);
+        const base = this._baselineProducts?.get(pId);
+
+        if (!remoteP) return;
+
+        // If this product was NOT touched on this terminal since baseline, adopt the freshest server state
+        if (base && JSON.stringify(localP) === base.json) {
+          Object.assign(localP, remoteP);
+          return;
+        }
+
+        // Product WAS modified locally: check if its stock was also modified on the server (e.g. POS sale on another device)
+        if (base && !this._manualStockOverrideIds?.has(pId)) {
+          const localStock = parseFloat(String(localP.stock ?? 0).replace(',', '.')) || 0;
+          const remoteStock = parseFloat(String(remoteP.stock ?? 0).replace(',', '.')) || 0;
+          const localDelta = localStock - base.stock;
+          const remoteDelta = remoteStock - base.stock;
+
+          if (Math.abs(remoteDelta) > 0.0001) {
+            const isPesaje = (localP.measureType || 'Pesaje') === 'Pesaje';
+            const mergedRaw = Math.max(0, remoteStock + localDelta);
+            localP.stock = isPesaje
+              ? (mergedRaw <= 0.004 ? 0 : Math.round(mergedRaw * 100) / 100)
+              : Math.max(0, Math.round(mergedRaw));
+
+            const localSold = parseFloat(String(localP.sold30d ?? 0).replace(',', '.')) || 0;
+            const remoteSold = parseFloat(String(remoteP.sold30d ?? 0).replace(',', '.')) || 0;
+            const localSoldDelta = localSold - (base.sold30d || 0);
+            localP.sold30d = Math.max(0, Math.round((remoteSold + localSoldDelta) * 100) / 100);
+
+            // Merge monthlySales
+            if (remoteP.monthlySales && typeof remoteP.monthlySales === 'object') {
+              if (!localP.monthlySales) localP.monthlySales = {};
+              for (const [mKey, daysObj] of Object.entries(remoteP.monthlySales)) {
+                if (!localP.monthlySales[mKey]) {
+                  localP.monthlySales[mKey] = Object.assign({}, daysObj);
+                } else if (daysObj && typeof daysObj === 'object') {
+                  for (const [dKey, dVal] of Object.entries(daysObj)) {
+                    localP.monthlySales[mKey][dKey] = Math.max(
+                      Number(localP.monthlySales[mKey][dKey]) || 0,
+                      Number(dVal) || 0
+                    );
+                  }
+                }
+              }
+            }
+
+            if (localP.status !== 'inactive') {
+              const minS = localP.minStock !== undefined ? (parseFloat(String(localP.minStock).replace(',', '.')) || 0) : (isPesaje ? 0.5 : 2);
+              if (localP.stock <= 0) {
+                localP.status = 'out_of_stock';
+              } else if (localP.stock <= minS) {
+                localP.status = 'low_stock';
+              } else {
+                localP.status = 'active';
+              }
+            }
+          }
+        }
+      });
+
+      // Preserve any newly created products on other terminals that were not deleted here
+      remote.products.forEach(remoteP => {
+        if (!remoteP || !remoteP.id) return;
+        const pId = String(remoteP.id);
+        if (!localProdIds.has(pId) && !this._deletedProductIds?.has(pId) && !this._baselineProductIds?.has(pId)) {
+          this.data.products.unshift(remoteP);
+          localProdIds.add(pId);
+        }
+      });
+
+      // 2. Merge recentTransactions (preserve sales recorded on other terminals)
+      if (Array.isArray(remote.recentTransactions)) {
+        if (!Array.isArray(this.data.recentTransactions)) this.data.recentTransactions = [];
+        const localTxMap = new Map(this.data.recentTransactions.filter(Boolean).map(t => [String(t.id), t]));
+        const newRemoteTxs = [];
+
+        remote.recentTransactions.forEach(rTx => {
+          if (!rTx || !rTx.id) return;
+          const txId = String(rTx.id);
+          if (!localTxMap.has(txId)) {
+            if (!this._deletedTxIds?.has(txId) && !this._baselineTxIds?.has(txId)) {
+              newRemoteTxs.push(rTx);
+            }
+          } else {
+            const lTx = localTxMap.get(txId);
+            if ((rTx.status === 'Reversada' || rTx.reversada) && lTx.status !== 'Reversada') {
+              Object.assign(lTx, rTx);
+            }
+          }
+        });
+
+        if (newRemoteTxs.length > 0) {
+          this.data.recentTransactions = [...newRemoteTxs, ...this.data.recentTransactions];
+        }
+      }
+
+      // 3. Merge other collections (Purchases, Expenses, Abonos)
+      const mergeAppendOnlyList = (listKey, baselineSet) => {
+        if (!Array.isArray(remote[listKey])) return;
+        if (!Array.isArray(this.data[listKey])) this.data[listKey] = [];
+        const localIds = new Set(this.data[listKey].filter(Boolean).map(item => String(item.id)));
+        const added = [];
+        remote[listKey].forEach(rItem => {
+          if (!rItem || !rItem.id) return;
+          const id = String(rItem.id);
+          if (!localIds.has(id) && (!baselineSet || !baselineSet.has(id))) {
+            added.push(rItem);
+          }
+        });
+        if (added.length > 0) {
+          this.data[listKey] = [...added, ...this.data[listKey]];
+        }
+      };
+
+      mergeAppendOnlyList('purchases', this._baselinePoIds);
+      mergeAppendOnlyList('expenses', this._baselineExpIds);
+      mergeAppendOnlyList('abonosVentas', this._baselineAbonosVentasIds);
+      mergeAppendOnlyList('abonosCompras', this._baselineAbonosComprasIds);
+
+      // 4. Merge Cash Shift & Cash in Box
+      if (remote.cashShiftLog && this.data.cashShiftLog) {
+        const currentShiftJson = JSON.stringify(this.data.cashShiftLog || {});
+        if (this._baselineCashShiftJson && currentShiftJson === this._baselineCashShiftJson) {
+          this.data.cashShiftLog = Object.assign({}, remote.cashShiftLog);
+          if (remote.store && remote.store.cashInBox !== undefined) {
+            if (!this.data.store) this.data.store = {};
+            this.data.store.cashInBox = remote.store.cashInBox;
+          }
+        } else if (
+          this._baselineCashShift &&
+          remote.cashShiftLog.status === 'Abierto' &&
+          this.data.cashShiftLog.status === 'Abierto' &&
+          this._baselineCashShift.status === 'Abierto'
+        ) {
+          const numFields = ['cashSales', 'cardSales', 'transferSales', 'creditSales', 'cashExpenses', 'expectedCashInDrawer'];
+          numFields.forEach(f => {
+            const baseVal = Number(this._baselineCashShift[f]) || 0;
+            const localVal = Number(this.data.cashShiftLog[f]) || 0;
+            const remoteVal = Number(remote.cashShiftLog[f]) || 0;
+            const localDelta = localVal - baseVal;
+            const remoteDelta = remoteVal - baseVal;
+            if (Math.abs(remoteDelta) > 0.01) {
+              this.data.cashShiftLog[f] = Math.round((remoteVal + localDelta) * 100) / 100;
+            }
+          });
+          if (remote.store && remote.store.cashInBox !== undefined && this.data.store) {
+            const baseBox = Number(this._baselineCashInBox) || 0;
+            const localBox = Number(this.data.store.cashInBox) || 0;
+            const remoteBox = Number(remote.store.cashInBox) || 0;
+            if (Math.abs(remoteBox - baseBox) > 0.01) {
+              this.data.store.cashInBox = Math.round((remoteBox + (localBox - baseBox)) * 100) / 100;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[NexusApp] Advertencia en pre-merge remoto:', err);
+    }
+  }
+
   async savePersistence() {
     this.data.updatedAt = new Date().toISOString();
 
@@ -1014,8 +1308,6 @@ class NexusApp {
       this.data.kpis.skusCount = this.data.products.length;
     }
 
-    this.data.updatedAt = new Date().toISOString();
-
     try {
       localStorage.setItem('nexus_pos_data', JSON.stringify(this.data));
     } catch(e) {
@@ -1030,17 +1322,46 @@ class NexusApp {
     this._isSaving = true;
 
     try {
+      // Pre-save Omnichannel Merge: nunca sobrescribir ventas ni descuentos de stock hechos en otras terminales
+      await this.mergeWithRemoteBeforeSave();
+      this.syncAllCategoryGrams();
+      if (this.data && Array.isArray(this.data.products)) {
+        if (!this.data.kpis) this.data.kpis = {};
+        this.data.kpis.skusCount = this.data.products.length;
+      }
+      this.data.updatedAt = new Date().toISOString();
+
+      try {
+        localStorage.setItem('nexus_pos_data', JSON.stringify(this.data));
+      } catch (_) {}
+
       const userRole = this.currentUser?.role || 'Super Admin';
       const userId = this.currentUser?.id || 'USR-001';
-      await fetch('/api/data', {
+      const payload = Object.assign({}, this.data, {
+        _syncMeta: {
+          baseUpdatedAt: this._baselineUpdatedAt || null,
+          deletedProductIds: Array.from(this._deletedProductIds || []),
+          deletedTxIds: Array.from(this._deletedTxIds || []),
+          manualStockOverrideIds: Array.from(this._manualStockOverrideIds || [])
+        }
+      });
+
+      const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'X-Nexus-User-Id': userId,
           'X-Nexus-Role': userRole
         },
-        body: JSON.stringify(this.data)
+        body: JSON.stringify(payload)
       });
+
+      if (res.ok) {
+        if (this._manualStockOverrideIds) this._manualStockOverrideIds.clear();
+        if (this._deletedProductIds) this._deletedProductIds.clear();
+        if (this._deletedTxIds) this._deletedTxIds.clear();
+        this.captureSyncBaseline(this.data);
+      }
     } catch(e) {
       console.warn('[NexusApp] No se pudo sincronizar con backend REST:', e);
     } finally {
@@ -1064,6 +1385,7 @@ class NexusApp {
           if (parsed && parsed.products) {
             this.data = Object.assign({}, INITIAL_DATA, parsed);
             this.sanitizeLoadedData();
+            this.captureSyncBaseline(this.data);
             this.renderAllTables();
             this.renderDashboardMetrics();
             this.renderPOSProducts();
@@ -1081,15 +1403,17 @@ class NexusApp {
       }
     });
 
-    // 2. Focus re-sync (pull latest state from MongoDB / Backend when user switches back to this window)
+    // 2. Focus & Visibility re-sync (pull latest state from MongoDB / Backend when user returns on desktop or mobile)
     window.addEventListener('focus', async () => {
       await this.syncRemoteDataIfChanged();
     });
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible') {
+        await this.syncRemoteDataIfChanged();
+      }
+    });
 
-    // 3. Heartbeat live polling (every 30s if tab is visible)
-    // Reduced from 10s → 30s: the focus re-sync above already handles
-    // instant consistency when the user returns to the tab.
-    // Concurrency guard prevents overlapping fetch+fingerprint+render cycles.
+    // 3. Heartbeat live polling (every 12s if tab is visible)
     setInterval(async () => {
       if (document.visibilityState !== 'visible') return;
       if (this._heartbeatRunning) return;
@@ -1099,13 +1423,13 @@ class NexusApp {
       } finally {
         this._heartbeatRunning = false;
       }
-    }, 30000);
+    }, 12000);
   }
 
   async syncRemoteDataIfChanged() {
     if (this._isSaving || this._pendingSave) return;
     try {
-      const res = await fetch('/api/data');
+      const res = await fetch('/api/data', { cache: 'no-store' });
       if (res.ok) {
         const remote = await res.json();
         if (remote && remote.products && Array.isArray(remote.products)) {
@@ -1142,6 +1466,7 @@ class NexusApp {
           if (localFp !== remoteFp) {
             this.data = Object.assign({}, INITIAL_DATA, remote);
             this.sanitizeLoadedData();
+            this.captureSyncBaseline(this.data);
             try {
               localStorage.setItem('nexus_pos_data', JSON.stringify(this.data));
             } catch (_) {}
@@ -3494,7 +3819,21 @@ class NexusApp {
           // GRAMAJE / CANTIDAD TOTAL DEL ARTÍCULO
           let rawStock = document.getElementById('edit-prod-stock')?.value;
           let newStock = this.parseCleanNumber(rawStock);
-          p.stock = isNaN(newStock) || newStock < 0 ? 0 : Math.round(newStock * 100) / 100;
+          const cleanNewStock = isNaN(newStock) || newStock < 0 ? 0 : Math.round(newStock * 100) / 100;
+          const initialModalStock = (this._editingProductId === String(p.id) && this._editingProductInitialStock !== undefined)
+            ? Number(this._editingProductInitialStock)
+            : (parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0);
+
+          if (!this._manualStockOverrideIds) this._manualStockOverrideIds = new Set();
+          if (Math.abs(cleanNewStock - initialModalStock) >= 0.0001) {
+            // El administrador modificó explícitamente el stock en el modal
+            this._manualStockOverrideIds.add(String(p.id));
+          } else {
+            // El administrador solo editó nombre/código/costo/categoría sin tocar stock:
+            // permitir que mergeWithRemoteBeforeSave preserve cualquier venta POS ocurrida en otra terminal
+            this._manualStockOverrideIds.delete(String(p.id));
+          }
+          p.stock = cleanNewStock;
 
           const active = document.getElementById('edit-prod-active')?.checked !== false;
           if (!active) {
@@ -4436,6 +4775,9 @@ class NexusApp {
     const p = this.data.products.find(item => item.id === id);
     if (!p) return;
 
+    this._editingProductId = String(p.id);
+    this._editingProductInitialStock = parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0;
+
     document.getElementById('edit-prod-id').value = p.id;
     document.getElementById('edit-prod-sku').value = p.sku || '001';
     document.getElementById('edit-prod-name').value = p.name;
@@ -4468,6 +4810,22 @@ class NexusApp {
     this.onMeasureTypeChange('edit');
     this.updateProductCostProfitPreview('edit');
     this.openModal('edit-product-modal');
+
+    // Sincronizar en segundo plano con el servidor por si otra terminal descontó stock hace segundos
+    this.syncRemoteDataIfChanged().then(() => {
+      const freshP = (this.data.products || []).find(item => String(item.id) === String(id));
+      const modalEl = document.getElementById('edit-product-modal');
+      const stockInputEl = document.getElementById('edit-prod-stock');
+      if (freshP && modalEl && modalEl.classList.contains('active') && stockInputEl) {
+        const freshStock = parseFloat(String(freshP.stock ?? 0).replace(',', '.')) || 0;
+        const currentInputStock = this.parseCleanNumber(stockInputEl.value);
+        if (Math.abs(currentInputStock - this._editingProductInitialStock) < 0.0001 && Math.abs(freshStock - this._editingProductInitialStock) >= 0.0001) {
+          this._editingProductInitialStock = freshStock;
+          stockInputEl.value = this.formatNumberWithCommas(freshStock, true);
+          this.updateProductCostProfitPreview('edit');
+        }
+      }
+    }).catch(() => {});
   }
 
   openAddCategoryModal() {
@@ -10568,6 +10926,8 @@ class NexusApp {
     if (!p) return;
     if (!confirm(`¿Está seguro de eliminar el producto "${p.name}"? Esta acción no se puede deshacer.`)) return;
 
+    if (!this._deletedProductIds) this._deletedProductIds = new Set();
+    this._deletedProductIds.add(String(id));
     this.data.products = this.data.products.filter(item => item.id !== id);
     this.syncAllCategoryGrams();
     this.cart = this.cart.filter(item => item.product.id !== id);
@@ -24498,27 +24858,45 @@ class NexusApp {
 
           // Priority 1: Exact code match (SKU, barcode, ID)
           const normTerm = this.normalizeSearchStr(term);
-          const exactCodeMatch = (this.data.products || []).find(p => 
+          const exactCodeMatches = (this.data.products || []).filter(p => 
             this.normalizeSearchStr(p.sku) === normTerm ||
             this.normalizeSearchStr(p.barcode) === normTerm ||
             this.normalizeSearchStr(p.id) === normTerm
           );
 
-          if (exactCodeMatch) {
-            this.addToCart(exactCodeMatch.id);
-            this.showToast(`Producto agregado: "${exactCodeMatch.name}" [${exactCodeMatch.sku || exactCodeMatch.id}]`, 'success');
+          if (exactCodeMatches.length === 1) {
+            const matchProd = exactCodeMatches[0];
+            if ((Number(matchProd.price) || 0) <= 0) {
+              this.openAddToCartModal(matchProd.id);
+            } else {
+              this.addToCart(matchProd.id);
+              this.showToast(`Producto agregado: "${matchProd.name}" [${matchProd.sku || matchProd.id}]`, 'success');
+            }
             searchInput.value = '';
             this.renderPOSProducts();
+            return;
+          } else if (exactCodeMatches.length > 1) {
+            // Múltiples productos comparten el mismo código (ej. código "BL" en varios calibres de balines)
+            this.renderPOSProducts();
+            this.showToast(`Hay ${exactCodeMatches.length} referencias con el código "${term.toUpperCase()}". Selecciona en pantalla el calibre/producto exacto.`, 'info');
             return;
           }
 
           // Priority 2: Exactly 1 matching product for current search term
           const filtered = (this.data.products || []).filter(p => this.matchesProductSearch(p, term));
           if (filtered.length === 1) {
-            this.addToCart(filtered[0].id);
-            this.showToast(`Producto agregado: "${filtered[0].name}" [${filtered[0].sku || filtered[0].id}]`, 'success');
+            const matchProd = filtered[0];
+            if ((Number(matchProd.price) || 0) <= 0) {
+              this.openAddToCartModal(matchProd.id);
+            } else {
+              this.addToCart(matchProd.id);
+              this.showToast(`Producto agregado: "${matchProd.name}" [${matchProd.sku || matchProd.id}]`, 'success');
+            }
             searchInput.value = '';
             this.renderPOSProducts();
+          } else if (filtered.length > 1) {
+            this.renderPOSProducts();
+            this.showToast(`Se encontraron ${filtered.length} referencias para "${term}". Selecciona el producto exacto.`, 'info');
           }
         }
       });
@@ -26300,20 +26678,21 @@ class NexusApp {
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     this.cart.forEach(cartItem => {
-      const p = this.data.products.find(prod => prod.id === cartItem.product.id);
+      const p = this.data.products.find(prod => String(prod.id) === String(cartItem.product.id));
       if (p) {
-        const soldQty = Number(cartItem.qty) || 0;
+        const soldQty = this.parseCleanNumber(cartItem.qty);
         const isPesaje = (p.measureType || 'Pesaje') === 'Pesaje';
         const pWeight = parseFloat(String(p.pieceWeight !== undefined && p.pieceWeight !== null ? p.pieceWeight : (p.weight || 0)).replace(',', '.')) || 0;
         const isUnitWithWeight = !isPesaje && pWeight > 0;
-        const currentStockNum = Number(p.stock) || 0;
+        const currentStockNum = parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0;
         const unitsToDeduct = isUnitWithWeight
           ? Math.min(Math.max(1, Math.round(currentStockNum || 1)), Math.max(1, Math.round(soldQty / pWeight)))
           : (isPesaje ? soldQty : Math.max(1, Math.round(soldQty)));
         cartItem._unitsDeducted = unitsToDeduct;
 
         if (isPesaje) {
-          p.stock = Math.round((currentStockNum - unitsToDeduct) * 100) / 100;
+          const remGrams = Math.round((currentStockNum - unitsToDeduct) * 100) / 100;
+          p.stock = remGrams <= 0.004 ? 0 : remGrams;
         } else {
           // Productos por Unidades siempre descuentan unidades enteras; si queda < 1 unidad pasa a 0 (Agotado)
           const remainingUnits = Math.round(currentStockNum - unitsToDeduct);
@@ -26323,17 +26702,19 @@ class NexusApp {
         if (p.stock <= 0) {
           p.stock = 0;
           p.status = 'out_of_stock';
-        } else if (p.stock <= (Number(p.minStock) || 0)) {
+        } else if (p.stock <= (parseFloat(String(p.minStock ?? (isPesaje ? 0.5 : 2)).replace(',', '.')) || 0)) {
           p.status = 'low_stock';
         } else {
           p.status = 'active';
         }
 
-        p.sold30d = (Number(p.sold30d) || 0) + unitsToDeduct;
+        p.sold30d = Math.round(((parseFloat(String(p.sold30d ?? 0).replace(',', '.')) || 0) + unitsToDeduct) * 100) / 100;
         if (!p.monthlySales) p.monthlySales = {};
         if (!p.monthlySales[currentMonthKey]) p.monthlySales[currentMonthKey] = {};
-        p.monthlySales[currentMonthKey][currentDay] = (Number(p.monthlySales[currentMonthKey][currentDay]) || 0) + unitsToDeduct;
+        p.monthlySales[currentMonthKey][currentDay] = Math.round(((Number(p.monthlySales[currentMonthKey][currentDay]) || 0) + unitsToDeduct) * 100) / 100;
 
+        cartItem.product.stock = p.stock;
+        cartItem.product.status = p.status;
       }
     });
 
