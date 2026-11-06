@@ -260,6 +260,16 @@ app.post('/api/data', async (req, res) => {
       if (existingContent && Array.isArray(existingContent.recentTransactions) && Array.isArray(data.recentTransactions)) {
         const deletedTxSet = new Set(Array.isArray(syncMeta.deletedTxIds) ? syncMeta.deletedTxIds.map(String) : []);
         const manualOverrideSet = new Set(Array.isArray(syncMeta.manualStockOverrideIds) ? syncMeta.manualStockOverrideIds.map(String) : []);
+        const existingTxMap = new Map(existingContent.recentTransactions.filter(Boolean).map(t => [String(t.id), t]));
+        data.recentTransactions.forEach(incTx => {
+          if (!incTx || !incTx.id) return;
+          const exTx = existingTxMap.get(String(incTx.id));
+          if (exTx) {
+            if (exTx.closedShiftId && !incTx.closedShiftId) incTx.closedShiftId = exTx.closedShiftId;
+            if (exTx.shiftId && !incTx.shiftId) incTx.shiftId = exTx.shiftId;
+          }
+        });
+
         const incomingTxIds = new Set(data.recentTransactions.filter(Boolean).map(t => String(t.id)));
         const missingTxs = existingContent.recentTransactions.filter(t => t && t.id && !incomingTxIds.has(String(t.id)) && !deletedTxSet.has(String(t.id)));
 
@@ -296,6 +306,23 @@ app.post('/api/data', async (req, res) => {
               }
             }
           });
+        }
+      }
+
+      // Protect cash register reset against stale browser tabs holding old TURNO-011 or TRN-001..TRN-010
+      if (existingContent && existingContent.cashShiftLog && data.cashShiftLog) {
+        if (
+          existingContent.cashShiftLog.status === 'Cerrado' &&
+          !existingContent.cashShiftLog.shiftId &&
+          data.cashShiftLog.shiftId === 'TURNO-011'
+        ) {
+          data.cashShiftLog = existingContent.cashShiftLog;
+          if (Array.isArray(existingContent.cashShiftsHistory) && existingContent.cashShiftsHistory.length === 0) {
+            data.cashShiftsHistory = [];
+          }
+          if (data.store && existingContent.store) {
+            data.store.cashInBox = existingContent.store.cashInBox || 0;
+          }
         }
       }
     } catch (mergeErr) {

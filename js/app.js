@@ -1214,6 +1214,12 @@ class NexusApp {
             if ((rTx.status === 'Reversada' || rTx.reversada) && lTx.status !== 'Reversada') {
               Object.assign(lTx, rTx);
             }
+            if (rTx.closedShiftId && !lTx.closedShiftId) {
+              lTx.closedShiftId = rTx.closedShiftId;
+            }
+            if (rTx.shiftId && !lTx.shiftId) {
+              lTx.shiftId = rTx.shiftId;
+            }
           }
         });
 
@@ -1248,8 +1254,12 @@ class NexusApp {
       // 4. Merge Cash Shift & Cash in Box
       if (remote.cashShiftLog && this.data.cashShiftLog) {
         const currentShiftJson = JSON.stringify(this.data.cashShiftLog || {});
-        if (this._baselineCashShiftJson && currentShiftJson === this._baselineCashShiftJson) {
+        const remoteWasReset = remote.cashShiftLog.status === 'Cerrado' && !remote.cashShiftLog.shiftId && (this.data.cashShiftLog.shiftId === 'TURNO-011' || this._baselineCashShift?.shiftId === 'TURNO-011');
+        if (remoteWasReset || (this._baselineCashShiftJson && currentShiftJson === this._baselineCashShiftJson)) {
           this.data.cashShiftLog = Object.assign({}, remote.cashShiftLog);
+          if (remoteWasReset && Array.isArray(remote.cashShiftsHistory)) {
+            this.data.cashShiftsHistory = [...remote.cashShiftsHistory];
+          }
           if (remote.store && remote.store.cashInBox !== undefined) {
             if (!this.data.store) this.data.store = {};
             this.data.store.cashInBox = remote.store.cashInBox;
@@ -1452,7 +1462,7 @@ class NexusApp {
             const sFp = (d.suppliers || []).map(s => `${s.id}:${s.creditBalance}`).join('|');
             const uFp = (d.users || []).map(u => `${u.id}:${u.status}:${u.role}:${(u.customPermissions || []).join(',')}`).join('|');
             const prfFp = (d.perfiles || []).map(pr => `${pr.id}:${pr.name}:${(pr.allowedModules || []).join(',')}`).join('|');
-            const cashFp = `${d.cashShiftLog?.status || ''}:${d.cashShiftLog?.expectedCashInDrawer || 0}:${d.cashShiftLog?.cashSales || 0}:${d.cashShiftLog?.cashExpenses || 0}`;
+            const cashFp = `${d.cashShiftLog?.status || ''}:${d.cashShiftLog?.shiftId || ''}:${d.cashShiftLog?.expectedCashInDrawer || 0}:${d.cashShiftLog?.cashSales || 0}:${d.cashShiftLog?.cashExpenses || 0}:${d.cashShiftsHistory?.length || 0}`;
             const txCount = d.recentTransactions?.length || 0;
             const poCount = d.purchases?.length || 0;
             const expCount = d.expenses?.length || 0;
@@ -3137,7 +3147,7 @@ class NexusApp {
         // Si el gasto se pagó en Efectivo desde la caja, descontar de caja en tiempo real
         if (method && method.toLowerCase().includes('efectivo')) {
           if (!this.data.cashShiftLog) {
-            this.data.cashShiftLog = { openingCash: 500000, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 500000, status: 'Abierto' };
+            this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
           }
           this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + amount) * 100) / 100;
           this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
@@ -3642,7 +3652,7 @@ class NexusApp {
             const currentDrawerCash = Number(this.data.cashShiftLog?.expectedCashInDrawer) || 0;
             if (totalCost <= currentDrawerCash && currentDrawerCash > 0) {
               if (!this.data.cashShiftLog) {
-                this.data.cashShiftLog = { openingCash: 500000, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 500000, status: 'Abierto' };
+                this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
               }
               this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + totalCost) * 100) / 100;
               this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
@@ -6206,7 +6216,7 @@ class NexusApp {
 
       // Sync with cashier cash drawer if paid in cash
       if (method.toLowerCase().includes('efectivo')) {
-        if (!this.data.cashShiftLog) this.data.cashShiftLog = { openingCash: 500000, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 500000, status: 'Abierto' };
+        if (!this.data.cashShiftLog) this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
         this.data.cashShiftLog.cashSales = Math.round(((Number(this.data.cashShiftLog.cashSales) || 0) + actualPay) * 100) / 100;
         this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
         if (this.data.store) {
@@ -11647,7 +11657,7 @@ class NexusApp {
 
   getCashShiftTransactions() {
     const shift = this.data.cashShiftLog;
-    if (!shift) return [];
+    if (!shift || (shift.status !== 'Abierto' && !shift.shiftId)) return [];
     const currentShiftId = shift.shiftId;
 
     let openTimestamp = shift.openedTimestamp || 0;
@@ -11664,7 +11674,7 @@ class NexusApp {
 
       // 1. Explicit shiftId match
       if (tx.shiftId) {
-        return tx.shiftId === currentShiftId;
+        return !!(currentShiftId && tx.shiftId === currentShiftId);
       }
 
       // 2. Exclude if marked as belonging to a closed shift
@@ -11680,8 +11690,9 @@ class NexusApp {
         }
       }
 
-      // 4. Fallback only if no timestamps exist
-      const openedDate = shift.openedDate || new Date().toISOString().slice(0, 10);
+      // 4. Fallback only if shift has an explicit openedDate
+      if (!shift.openedDate) return false;
+      const openedDate = shift.openedDate;
       const parts = openedDate.split('-');
       const datePattern = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : openedDate;
       return tx.date === datePattern || tx.date.includes(datePattern) || tx.date.includes(openedDate);
@@ -11690,7 +11701,7 @@ class NexusApp {
 
   getCashShiftCustomerPayments() {
     const shift = this.data.cashShiftLog;
-    if (!shift) return [];
+    if (!shift || (shift.status !== 'Abierto' && !shift.shiftId)) return [];
     let openTimestamp = shift.openedTimestamp || 0;
     if (!openTimestamp && shift.openedDate) {
       openTimestamp = this.parseDateAndTimeToTimestamp(shift.openedDate, shift.openedAt);
@@ -11701,7 +11712,7 @@ class NexusApp {
     return (this.data.abonosVentas || []).filter(a => {
       if (!a.date) return false;
       // 1. Coincidencia explícita con el turno activo
-      if (a.shiftId) return a.shiftId === shift.shiftId;
+      if (a.shiftId) return !!(shift.shiftId && a.shiftId === shift.shiftId);
       // 2. Si ya pertenece a un turno cerrado, descartar estrictamente
       if (a.closedShiftId || (a.shiftId && closedShiftIds.has(a.shiftId))) return false;
       // 3. Validación temporal si no tiene shiftId
@@ -12160,7 +12171,7 @@ class NexusApp {
 
   getCashShiftExpenses() {
     const shift = this.data.cashShiftLog;
-    if (!shift) return [];
+    if (!shift || (shift.status !== 'Abierto' && !shift.shiftId)) return [];
     const shiftDate = shift.openedDate || new Date().toISOString().slice(0, 10);
     const shiftId = shift.shiftId;
     let openTimestamp = shift.openedTimestamp || 0;
@@ -12554,7 +12565,7 @@ class NexusApp {
     if (operatorEl) operatorEl.innerText = this.currentUser?.name || 'Cajero';
 
     const inputCash = document.getElementById('open-cash-base-input');
-    if (inputCash) inputCash.value = '500,000';
+    if (inputCash) inputCash.value = '0';
 
     const checkCard = document.getElementById('open-cash-enable-card');
     if (checkCard) checkCard.checked = false;
@@ -26730,7 +26741,7 @@ class NexusApp {
     let separePending = 0;
 
     if (!this.data.cashShiftLog) {
-      this.data.cashShiftLog = { openingCash: 500000, cashSales: 0, cardSales: 0, cashExpenses: 0, expectedCashInDrawer: 500000, status: 'Abierto' };
+      this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cardSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
     }
 
     if (this.selectedPayMethod === 'cash') {

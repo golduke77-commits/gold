@@ -8029,9 +8029,14 @@ const INITIAL_DATA = {
 
   // 4. ARQUEO & CUADRE DE CAJA DIARIO
   cashShiftLog: {
-    shiftId: "TURNO-001",
-    openedAt: "08:00 AM",
+    shiftId: "",
+    openedAt: "",
+    openedDate: "",
+    openedBy: "",
     openingCash: 0,
+    openingCard: 0,
+    openingAccount: "",
+    openingTotal: 0,
     cashSales: 0,
     cardSales: 0,
     qrSales: 0,

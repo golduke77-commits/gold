@@ -12,7 +12,7 @@
     "cashier": "Nexus",
     "shiftStatus": "Cerrado",
     "shiftStartTime": "08:00 AM",
-    "cashInBox": 1752000,
+    "cashInBox": 0,
     "taxRate": 0,
     "branding": {
       "appName": "GOLDUKE",
@@ -8118,25 +8118,32 @@
   ],
   "assets": [],
   "cashShiftLog": {
-    "shiftId": "TURNO-001",
-    "openedAt": "05:58 p.m.",
-    "openingCash": 500000,
-    "cashSales": 1252000,
+    "shiftId": "",
+    "openingCash": 0,
+    "openingCard": 0,
+    "openingAccount": "",
+    "openingTotal": 0,
+    "cashSales": 0,
     "cardSales": 0,
+    "transferSales": 0,
+    "tarjetaSales": 0,
+    "creditSales": 0,
     "qrSales": 0,
     "cashExpenses": 0,
-    "expectedCashInDrawer": 1752000,
+    "expectedCashInDrawer": 0,
+    "expectedCardInAccount": 0,
     "actualCashInDrawer": 0,
+    "closingCash": 0,
     "discrepancy": 0,
-    "status": "Abierto",
-    "openingCard": 500000,
-    "openingAccount": "CUENTA GOLDUKE JOYERÍA SAS",
-    "openingTotal": 1000000,
-    "expectedCardInAccount": 500000,
-    "openedBy": "Salome Duke",
-    "openedDate": "2026-10-24",
-    "openedTimestamp": 1792882691257,
-    "openedIso": "2026-10-24T22:58:11.257Z"
+    "difference": 0,
+    "status": "Cerrado",
+    "openedBy": "",
+    "openedAt": "",
+    "openedDate": "",
+    "openedTimestamp": 0,
+    "openedIso": "",
+    "closedBy": "",
+    "closedAt": ""
   },
   "cashShiftsHistory": [],
   "abonosVentas": [],
@@ -8227,7 +8234,9 @@
       "bankWithheld": 0,
       "paymentMethod": "Efectivo",
       "cashier": "Golduke",
-      "status": "completed"
+      "status": "completed",
+      "closedShiftId": "TURNO-HIST",
+      "shiftId": "TURNO-HIST"
     },
     {
       "id": "TX-91370",
@@ -8263,7 +8272,9 @@
       "bankWithheld": 0,
       "paymentMethod": "Efectivo",
       "cashier": "Golduke",
-      "status": "completed"
+      "status": "completed",
+      "closedShiftId": "TURNO-HIST",
+      "shiftId": "TURNO-HIST"
     },
     {
       "id": "TX-91201",
@@ -8299,7 +8310,9 @@
       "bankWithheld": 0,
       "paymentMethod": "Efectivo",
       "cashier": "Salome Duke",
-      "status": "completed"
+      "status": "completed",
+      "closedShiftId": "TURNO-HIST",
+      "shiftId": "TURNO-HIST"
     }
   ],
   "financialLedger": [],
@@ -8323,6 +8336,6 @@
       0
     ]
   },
-  "updatedAt": "2026-10-27T15:25:00.513Z",
+  "updatedAt": "2026-11-06T15:56:15.612Z",
   "sales": []
 }
