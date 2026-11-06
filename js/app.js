@@ -1214,11 +1214,16 @@ class NexusApp {
             if ((rTx.status === 'Reversada' || rTx.reversada) && lTx.status !== 'Reversada') {
               Object.assign(lTx, rTx);
             }
-            if (rTx.closedShiftId && !lTx.closedShiftId) {
-              lTx.closedShiftId = rTx.closedShiftId;
-            }
-            if (rTx.shiftId && !lTx.shiftId) {
-              lTx.shiftId = rTx.shiftId;
+            if (rTx.closedShiftId === 'TURNO-HIST') {
+              lTx.closedShiftId = 'TURNO-HIST';
+              lTx.shiftId = 'TURNO-HIST';
+            } else {
+              if (rTx.closedShiftId && !lTx.closedShiftId) {
+                lTx.closedShiftId = rTx.closedShiftId;
+              }
+              if (rTx.shiftId && !lTx.shiftId) {
+                lTx.shiftId = rTx.shiftId;
+              }
             }
           }
         });
@@ -11672,14 +11677,14 @@ class NexusApp {
       if (!tx.date) return false;
       if (tx.status === 'Reversada' || tx.status === 'Anulada' || tx.status === 'reversada') return false;
 
-      // 1. Explicit shiftId match
-      if (tx.shiftId) {
-        return !!(currentShiftId && tx.shiftId === currentShiftId);
-      }
-
-      // 2. Exclude if marked as belonging to a closed shift
+      // 1. Exclude immediately if already marked as belonging to a closed shift
       if (tx.closedShiftId || (tx.shiftId && closedShiftIds.has(tx.shiftId))) {
         return false;
+      }
+
+      // 2. Explicit shiftId match with active shift
+      if (tx.shiftId) {
+        return !!(currentShiftId && tx.shiftId === currentShiftId);
       }
 
       // 3. Timestamp verification: must be on or after shift was opened
@@ -11711,10 +11716,10 @@ class NexusApp {
 
     return (this.data.abonosVentas || []).filter(a => {
       if (!a.date) return false;
-      // 1. Coincidencia explícita con el turno activo
-      if (a.shiftId) return !!(shift.shiftId && a.shiftId === shift.shiftId);
-      // 2. Si ya pertenece a un turno cerrado, descartar estrictamente
+      // 1. Si ya pertenece a un turno cerrado, descartar estrictamente
       if (a.closedShiftId || (a.shiftId && closedShiftIds.has(a.shiftId))) return false;
+      // 2. Coincidencia explícita con el turno activo
+      if (a.shiftId) return !!(shift.shiftId && a.shiftId === shift.shiftId);
       // 3. Validación temporal si no tiene shiftId
       if (openTimestamp > 0) {
         const pDate = a.date.includes(' ') ? a.date.split(' ')[0] : a.date;
@@ -12204,13 +12209,13 @@ class NexusApp {
 
     // Helper: coincidencia estricta y segura con el turno activo
     const matchesShift = (dateStr, timeStr, itemShiftId, itemTimestamp = 0, closedShiftId = null) => {
-      // 1. Si el egreso tiene un shiftId explícito asignado:
-      if (itemShiftId) {
-        return !!(shiftId && itemShiftId === shiftId);
-      }
-      // 2. Si ya pertenece a un turno cerrado o está marcado como cerrado en otro turno:
+      // 1. Si ya pertenece a un turno cerrado o está marcado como cerrado en otro turno:
       if (closedShiftId || (itemShiftId && closedShiftIds.has(itemShiftId))) {
         return false;
+      }
+      // 2. Si el egreso tiene un shiftId explícito asignado:
+      if (itemShiftId) {
+        return !!(shiftId && itemShiftId === shiftId);
       }
       // 3. Validación de fecha
       if (!dateStr) return false;

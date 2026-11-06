@@ -265,8 +265,13 @@ app.post('/api/data', async (req, res) => {
           if (!incTx || !incTx.id) return;
           const exTx = existingTxMap.get(String(incTx.id));
           if (exTx) {
-            if (exTx.closedShiftId && !incTx.closedShiftId) incTx.closedShiftId = exTx.closedShiftId;
-            if (exTx.shiftId && !incTx.shiftId) incTx.shiftId = exTx.shiftId;
+            if (exTx.closedShiftId === 'TURNO-HIST') {
+              incTx.closedShiftId = 'TURNO-HIST';
+              incTx.shiftId = 'TURNO-HIST';
+            } else {
+              if (exTx.closedShiftId && !incTx.closedShiftId) incTx.closedShiftId = exTx.closedShiftId;
+              if (exTx.shiftId && !incTx.shiftId) incTx.shiftId = exTx.shiftId;
+            }
           }
         });
 
