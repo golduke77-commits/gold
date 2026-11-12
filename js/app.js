@@ -637,9 +637,12 @@ class NexusApp {
         if (matchedCat) {
           p.category = matchedCat.id;
           p.categoryName = matchedCat.name;
+          p.isExtra = Boolean(matchedCat.type === 'extras' || matchedCat.isExtra);
         } else if (this.data.categories && this.data.categories.length > 0) {
-          p.category = this.data.categories[0].id;
-          p.categoryName = this.data.categories[0].name;
+          const fallbackMetalCat = this.data.categories.find(c => c.type !== 'extras' && !c.isExtra) || this.data.categories[0];
+          p.category = fallbackMetalCat.id;
+          p.categoryName = fallbackMetalCat.name;
+          p.isExtra = Boolean(fallbackMetalCat.type === 'extras' || fallbackMetalCat.isExtra);
         }
       });
       // NOTE: Empty array is valid for clean production data
@@ -804,17 +807,28 @@ class NexusApp {
     this.syncAllCategoryGrams();
     this.renderAllTables();
     this.renderCategoryPills();
-    this.populateProductCategorySelect('new-prod-cat');
-    this.populateProductCategorySelect('edit-prod-cat');
+    const newProdModalOpen = document.getElementById('product-modal')?.classList.contains('open');
+    const editProdModalOpen = document.getElementById('edit-product-modal')?.classList.contains('open');
+    if (!newProdModalOpen) {
+      const currentNewCat = document.getElementById('new-prod-cat')?.value || '';
+      this.populateProductCategorySelect('new-prod-cat', currentNewCat);
+    }
+    if (!editProdModalOpen) {
+      const currentEditCat = document.getElementById('edit-prod-cat')?.value || '';
+      this.populateProductCategorySelect('edit-prod-cat', currentEditCat);
+    }
     this.renderPOSProducts();
     this.renderPosMetalRates();
     if (typeof this.renderCarteraMorosidadTable === 'function') this.renderCarteraMorosidadTable();
     if (typeof this.renderMorosidadPortfolio === 'function') this.renderMorosidadPortfolio();
     this.populateTendenciaDatalist();
+    const checkoutModalOpen = document.getElementById('checkout-modal')?.classList.contains('open');
     this.populateCheckoutCustomerSelect();
     this.populateCardAccountSelect();
     this.populateTransferAccountSelect();
-    this.syncCheckoutCustomerPaymentMethods();
+    if (!checkoutModalOpen) {
+      this.syncCheckoutCustomerPaymentMethods();
+    }
     this.renderDashboardMetrics();
     this.renderCuadreCajaCard();
     this.renderCashStatusIndicator();
@@ -1118,6 +1132,20 @@ class NexusApp {
       if (!remote || !Array.isArray(remote.products)) return;
 
       const remoteProdMap = new Map(remote.products.filter(Boolean).map(p => [String(p.id), p]));
+      const remoteDeletedIds = new Set(Array.isArray(remote.deletedProductIds) ? remote.deletedProductIds.map(String) : []);
+      if (Array.isArray(this.data.deletedProductIds)) {
+        this.data.deletedProductIds.forEach(id => remoteDeletedIds.add(String(id)));
+      }
+      if (this._deletedProductIds) {
+        this._deletedProductIds.forEach(id => remoteDeletedIds.add(String(id)));
+      }
+      this.data.deletedProductIds = Array.from(remoteDeletedIds).slice(-200);
+
+      // Remove any product locally that was deleted on another terminal
+      if (remoteDeletedIds.size > 0 && Array.isArray(this.data.products)) {
+        this.data.products = this.data.products.filter(p => p && !remoteDeletedIds.has(String(p.id)));
+      }
+
       const localProdIds = new Set();
 
       // 1. Merge Products (protect concurrent POS stock deductions across terminals/tabs)
@@ -1190,7 +1218,7 @@ class NexusApp {
       remote.products.forEach(remoteP => {
         if (!remoteP || !remoteP.id) return;
         const pId = String(remoteP.id);
-        if (!localProdIds.has(pId) && !this._deletedProductIds?.has(pId) && !this._baselineProductIds?.has(pId)) {
+        if (!localProdIds.has(pId) && !remoteDeletedIds.has(pId) && !this._deletedProductIds?.has(pId) && !this._baselineProductIds?.has(pId)) {
           this.data.products.unshift(remoteP);
           localProdIds.add(pId);
         }
@@ -1442,11 +1470,13 @@ class NexusApp {
   }
 
   async syncRemoteDataIfChanged() {
-    if (this._isSaving || this._pendingSave) return;
+    if (this._isSaving || this._pendingSave || this._isSubmittingProduct || this._isSubmittingPurchase || this._isProcessingPayment) return;
     try {
       const res = await fetch('/api/data', { cache: 'no-store' });
+      if (this._isSaving || this._pendingSave || this._isSubmittingProduct || this._isSubmittingPurchase || this._isProcessingPayment) return;
       if (res.ok) {
         const remote = await res.json();
+        if (this._isSaving || this._pendingSave || this._isSubmittingProduct || this._isSubmittingPurchase || this._isProcessingPayment) return;
         if (remote && remote.products && Array.isArray(remote.products)) {
           // If remote has identical timestamp, no changes occurred
           if (remote.updatedAt && this.data.updatedAt && remote.updatedAt === this.data.updatedAt) {
@@ -1462,7 +1492,7 @@ class NexusApp {
 
           // Structural fingerprint to detect real stock, price, debt, cash register, users and configuration updates
           const buildFingerprint = (d) => {
-            const pFp = (d.products || []).map(p => `${p.id}:${p.stock}:${p.price}:${p.status}`).join('|');
+            const pFp = (d.products || []).map(p => `${p.id}:${p.sku}:${p.name}:${p.category}:${p.cost}:${p.stock}:${p.price}:${p.status}`).join('|');
             const cFp = (d.customers || []).map(c => `${c.id}:${c.creditBalance}`).join('|');
             const sFp = (d.suppliers || []).map(s => `${s.id}:${s.creditBalance}`).join('|');
             const uFp = (d.users || []).map(u => `${u.id}:${u.status}:${u.role}:${(u.customPermissions || []).join(',')}`).join('|');
@@ -3124,48 +3154,58 @@ class NexusApp {
     if (expForm) {
       expForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (this._isSubmittingExpense) return;
         if (!this.canPerformAction('create', 'expense')) {
           this.showToast('Acceso Denegado: Tu rol no tiene permisos para registrar gastos.', 'danger');
           return;
         }
-        const desc = document.getElementById('exp-desc-input').value;
+        const desc = (document.getElementById('exp-desc-input')?.value || '').trim();
         const cat = document.getElementById('exp-cat-select').value;
         const amount = this.parseCleanNumber(document.getElementById('exp-amount-input')?.value);
         const method = document.getElementById('exp-method-select').value;
-
-        const activeShift = this.data.cashShiftLog && this.data.cashShiftLog.status === 'Abierto' ? this.data.cashShiftLog : null;
-        const now = new Date();
-        const newExp = {
-          id: this.generateSequentialId('EXP', this.data.expenses),
-          date: now.toISOString().slice(0, 10),
-          time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          timestamp: now.getTime(),
-          shiftId: activeShift ? activeShift.shiftId : null,
-          description: desc,
-          category: cat,
-          amount,
-          status: "Pagado",
-          method
-        };
-        this.data.expenses.unshift(newExp);
-
-        // Si el gasto se pagó en Efectivo desde la caja, descontar de caja en tiempo real
-        if (method && method.toLowerCase().includes('efectivo')) {
-          if (!this.data.cashShiftLog) {
-            this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
-          }
-          this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + amount) * 100) / 100;
-          this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
-          if (this.data.store) {
-            this.data.store.cashInBox = this.data.cashShiftLog.expectedCashInDrawer;
-          }
+        if (amount <= 0) {
+          this.showToast('El monto del gasto debe ser mayor a 0.', 'warning');
+          return;
         }
 
-        await this.savePersistence();
-        this.syncAllModules();
-        expForm.reset();
-        this.closeModal('expense-modal');
-        this.showToast(`Gasto de ${this.formatCurrency(amount)} registrado y descontado en caja`, 'success');
+        this._isSubmittingExpense = true;
+        try {
+          const activeShift = this.data.cashShiftLog && this.data.cashShiftLog.status === 'Abierto' ? this.data.cashShiftLog : null;
+          const now = new Date();
+          const newExp = {
+            id: this.generateSequentialId('EXP', this.data.expenses),
+            date: now.toISOString().slice(0, 10),
+            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: now.getTime(),
+            shiftId: activeShift ? activeShift.shiftId : null,
+            description: desc,
+            category: cat,
+            amount,
+            status: "Pagado",
+            method
+          };
+          this.data.expenses.unshift(newExp);
+
+          // Si el gasto se pagó en Efectivo desde la caja, descontar de caja en tiempo real
+          if (method && method.toLowerCase().includes('efectivo')) {
+            if (!this.data.cashShiftLog) {
+              this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
+            }
+            this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + amount) * 100) / 100;
+            this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
+            if (this.data.store) {
+              this.data.store.cashInBox = this.data.cashShiftLog.expectedCashInDrawer;
+            }
+          }
+
+          expForm.reset();
+          this.closeModal('expense-modal');
+          await this.savePersistence();
+          this.syncAllModules();
+          this.showToast(`Gasto de ${this.formatCurrency(amount)} registrado y descontado en caja`, 'success');
+        } finally {
+          this._isSubmittingExpense = false;
+        }
       });
     }
 
@@ -3181,14 +3221,31 @@ class NexusApp {
         const id = document.getElementById('edit-exp-id').value;
         const exp = this.data.expenses.find(x => x.id === id);
         if (exp) {
+          const oldAmount = Number(exp.amount) || 0;
+          const oldWasCash = Boolean(exp.method && (exp.method.toLowerCase().includes('efectivo') || exp.method.toLowerCase().includes('caja')));
+          const newAmount = this.parseCleanNumber(document.getElementById('edit-exp-amount')?.value);
+          const newMethod = document.getElementById('edit-exp-method').value;
+          const newIsCash = Boolean(newMethod && (newMethod.toLowerCase().includes('efectivo') || newMethod.toLowerCase().includes('caja')));
+
           exp.description = document.getElementById('edit-exp-desc').value;
           exp.category = document.getElementById('edit-exp-cat').value;
-          exp.amount = this.parseCleanNumber(document.getElementById('edit-exp-amount')?.value);
-          exp.method = document.getElementById('edit-exp-method').value;
+          exp.amount = newAmount;
+          exp.method = newMethod;
 
+          if (this.data.cashShiftLog && (oldWasCash || newIsCash)) {
+            let cashExp = Number(this.data.cashShiftLog.cashExpenses) || 0;
+            if (oldWasCash) cashExp = Math.max(0, cashExp - oldAmount);
+            if (newIsCash) cashExp += newAmount;
+            this.data.cashShiftLog.cashExpenses = Math.round(cashExp * 100) / 100;
+            this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - this.data.cashShiftLog.cashExpenses) * 100) / 100;
+            if (this.data.store) {
+              this.data.store.cashInBox = this.data.cashShiftLog.expectedCashInDrawer;
+            }
+          }
+
+          this.closeModal('edit-expense-modal');
           await this.savePersistence();
           this.syncAllModules();
-          this.closeModal('edit-expense-modal');
           this.showToast(`Gasto "${exp.description}" actualizado`, 'success');
         }
       });
@@ -3212,10 +3269,10 @@ class NexusApp {
           name, category: cat, price, status: "Active"
         };
         this.data.services.unshift(newSrv);
-        await this.savePersistence();
-        this.renderInvServiciosTable();
         srvForm.reset();
         this.closeModal('service-modal');
+        await this.savePersistence();
+        this.renderInvServiciosTable();
         this.showToast(`Servicio "${name}" guardado`, 'success');
       });
     }
@@ -3236,9 +3293,9 @@ class NexusApp {
           srv.category = document.getElementById('edit-srv-cat').value;
           srv.price = this.parseCleanNumber(document.getElementById('edit-srv-price')?.value);
 
+          this.closeModal('edit-service-modal');
           await this.savePersistence();
           this.renderInvServiciosTable();
-          this.closeModal('edit-service-modal');
           this.showToast(`Servicio "${srv.name}" actualizado`, 'success');
         }
       });
@@ -3249,6 +3306,7 @@ class NexusApp {
     if (catForm) {
       catForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (this._isSubmittingCategory) return;
         if (!this.canPerformAction('create', 'category')) {
           this.showToast('Acceso Denegado: Tu rol no tiene permisos para crear categorías.', 'danger');
           return;
@@ -3257,54 +3315,68 @@ class NexusApp {
         const isExtras = catType === 'extras';
         const name = document.getElementById('cat-name-input').value.trim();
         const color = document.getElementById('cat-color-input').value;
-        const id = name.toLowerCase().replace(/[^a-z0-9]/g, '') || `cat_${Date.now()}`;
+        const id = `cat-${name.toLowerCase().replace(/[^a-z0-9]/g, '') || Date.now()}`;
 
-        let newCat;
-        if (isExtras) {
-          const unitsInput = document.getElementById('cat-units-input');
-          const availableUnits = this.parseCleanNumber(unitsInput?.value) || 0;
-          const unitCostInput = document.getElementById('cat-unit-cost-input');
-          const unitCost = this.parseCleanNumber(unitCostInput?.value) || 0;
-
-          newCat = { 
-            id, 
-            name, 
-            type: 'extras',
-            isExtra: true,
-            measureType: 'Unidades',
-            itemsCount: 0, 
-            color, 
-            availableUnits: Math.max(0, Math.round(availableUnits * 100) / 100),
-            availableGrams: 0, // CRITICAL: zero grams for extras/manillas
-            cost: Math.max(0, Math.round(unitCost * 100) / 100),
-            totalValuation: Math.max(0, Math.round(availableUnits * unitCost * 100) / 100)
-          };
-        } else {
-          const gramsInput = document.getElementById('cat-grams-input');
-          const availableGrams = this.parseCleanNumber(gramsInput?.value);
-          const costInput = document.getElementById('cat-cost-input');
-          const cost = this.parseCleanNumber(costInput?.value);
-
-          newCat = { 
-            id, 
-            name, 
-            type: 'general',
-            itemsCount: 0, 
-            color, 
-            availableGrams: Math.max(0, Math.round(availableGrams * 100) / 100),
-            cost: Math.max(0, Math.round(cost * 100) / 100)
-          };
+        if ((this.data.categories || []).some(c => c && (c.name?.toLowerCase().trim() === name.toLowerCase() || c.id === id))) {
+          this.showToast(`Ya existe una categoría con el nombre "${name}".`, 'warning');
+          return;
         }
 
-        this.data.categories.unshift(newCat);
-        await this.savePersistence();
-        this.syncAllModules();
-        catForm.reset();
-        this.closeModal('category-modal');
-        if (isExtras) {
-          this.showToast(`Categoría de Manillas "${name}" creada con ${newCat.availableUnits} u. y costo base ${this.formatCurrency(newCat.cost)} (Sin afectación de gramaje)`, 'success');
-        } else {
-          this.showToast(`Categoría "${name}" creada con ${newCat.availableGrams} g y costo base ${this.formatCurrency(newCat.cost)}`, 'success');
+        this._isSubmittingCategory = true;
+        try {
+          let newCat;
+          if (isExtras) {
+            const unitsInput = document.getElementById('cat-units-input');
+            const availableUnits = this.parseCleanNumber(unitsInput?.value) || 0;
+            const unitCostInput = document.getElementById('cat-unit-cost-input');
+            const unitCost = this.parseCleanNumber(unitCostInput?.value) || 0;
+
+            newCat = { 
+              id, 
+              name, 
+              type: 'extras',
+              isExtra: true,
+              measureType: 'Unidades',
+              itemsCount: 0, 
+              color, 
+              availableUnits: Math.max(0, Math.round(availableUnits * 100) / 100),
+              availableGrams: 0, // CRITICAL: zero grams for extras/manillas
+              cost: Math.max(0, Math.round(unitCost * 100) / 100),
+              totalValuation: Math.max(0, Math.round(availableUnits * unitCost * 100) / 100)
+            };
+          } else {
+            const gramsInput = document.getElementById('cat-grams-input');
+            const availableGrams = this.parseCleanNumber(gramsInput?.value);
+            const costInput = document.getElementById('cat-cost-input');
+            const cost = this.parseCleanNumber(costInput?.value);
+
+            newCat = { 
+              id, 
+              name, 
+              type: 'general',
+              itemsCount: 0, 
+              color, 
+              availableGrams: Math.max(0, Math.round(availableGrams * 100) / 100),
+              cost: Math.max(0, Math.round(cost * 100) / 100)
+            };
+          }
+
+          if (isExtras) {
+            this.data.categories.push(newCat);
+          } else {
+            this.data.categories.unshift(newCat);
+          }
+          catForm.reset();
+          this.closeModal('category-modal');
+          await this.savePersistence();
+          this.syncAllModules();
+          if (isExtras) {
+            this.showToast(`Categoría de Manillas "${name}" creada con ${newCat.availableUnits} u. y costo base ${this.formatCurrency(newCat.cost)} (Sin afectación de gramaje)`, 'success');
+          } else {
+            this.showToast(`Categoría "${name}" creada con ${newCat.availableGrams} g y costo base ${this.formatCurrency(newCat.cost)}`, 'success');
+          }
+        } finally {
+          this._isSubmittingCategory = false;
         }
       });
     }
@@ -3354,15 +3426,16 @@ class NexusApp {
             if (p.category === cat.id || p.categoryName === oldName) {
               p.category = cat.id;
               p.categoryName = newName;
-              if (cat.cost !== undefined && cat.cost >= 0) {
+              p.isExtra = Boolean(isExtras);
+              if (cat.cost !== undefined && Number(cat.cost) > 0) {
                 p.cost = cat.cost;
               }
             }
           });
 
+          this.closeModal('edit-category-modal');
           await this.savePersistence();
           this.syncAllModules();
-          this.closeModal('edit-category-modal');
           if (isExtras) {
             this.showToast(`Categoría "${newName}" actualizada (${cat.availableUnits} u., ${this.formatCurrency(cat.cost)}/u.)`, 'success');
           } else {
@@ -3429,15 +3502,20 @@ class NexusApp {
     if (poForm) {
       poForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (this._isSubmittingPurchase) return;
+        const poSubmitBtn = poForm.querySelector('button[type="submit"]');
         try {
           if (!this.canPerformAction('create', 'purchase')) {
             this.showToast('Acceso Denegado: Tu rol no tiene permisos para crear órdenes de compra.', 'danger');
             return;
           }
-          const prodName = (document.getElementById('po-product-name')?.value || '').trim();
-          const prodSku = (document.getElementById('po-product-sku')?.value || '').trim();
+          const rawProdName = (document.getElementById('po-product-name')?.value || '').trim();
+          const nameMatch = rawProdName.match(/^(.*?)\s*\[Código:\s*([^\]]+)\]\s*$/i);
+          const prodName = nameMatch ? nameMatch[1].trim() : rawProdName;
+          const prodSku = ((document.getElementById('po-product-sku')?.value || '').trim()) || (nameMatch ? nameMatch[2].trim() : '');
           const prodId = (document.getElementById('po-product-id')?.value || '').trim();
-          const selectedCatId = (document.getElementById('po-category-select')?.value || 'oro18k').trim();
+          const defaultMetalCat = (this.data.categories || []).find(c => c.type !== 'extras' && !c.isExtra) || (this.data.categories || [])[0];
+          const selectedCatId = (document.getElementById('po-category-select')?.value || defaultMetalCat?.id || 'cat-nacional').trim();
           const measureType = document.getElementById('po-measure-type')?.value || 'Pesaje';
           const isPesaje = measureType === 'Pesaje';
           const isUnidades = !isPesaje;
@@ -3458,22 +3536,58 @@ class NexusApp {
             return;
           }
 
-          const catObj = (this.data.categories || []).find(c => c.id === selectedCatId) || 
-            (this.data.categories || []).find(c => c.id === 'oro18k') || 
-            { id: 'oro18k', name: 'Oro 18K Italiano & Ley' };
-          const isExtras = catObj.type === 'extras' || catObj.isExtra;
-
-          // Prioridad 1: Coincidencia por Código (SKU) exacto (identificador único del inventario)
-          let targetProd = null;
-          if (prodSku) {
-            targetProd = (this.data.products || []).find(p => p.sku && p.sku.toLowerCase().trim() === prodSku.toLowerCase().trim());
+          // Protección contra conflicto de código (SKU) asignado a otro producto con distinto nombre
+          if (prodSku && prodSku.toLowerCase().trim() !== 'bl') {
+            const skuConflict = (this.data.products || []).find(p =>
+              p && p.sku && p.sku.toLowerCase().trim() === prodSku.toLowerCase().trim()
+            );
+            if (skuConflict && skuConflict.name && skuConflict.name.toLowerCase().trim() !== prodName.toLowerCase().trim()) {
+              this.showToast(`El código "${prodSku}" ya pertenece al producto "${skuConflict.name}". Si "${prodName}" es un producto nuevo, asígnale otro código; o selecciona "${skuConflict.name}" para reabastecerlo.`, 'warning');
+              return;
+            }
           }
 
-          // Prioridad 2: Si no hubo coincidencia por SKU, verificar prodId únicamente si el producto seleccionado coincide con el SKU
-          if (!targetProd && prodId) {
-            const candidate = (this.data.products || []).find(p => p.id === prodId);
-            if (candidate && (!prodSku || (candidate.sku && candidate.sku.toLowerCase().trim() === prodSku.toLowerCase().trim()))) {
+          const poSig = `${prodSku.toLowerCase()}|${prodName.toLowerCase()}|${selectedCatId}|${quantity}|${unitCost}`;
+          if (this._lastPurchaseSubmitSig === poSig && (Date.now() - (this._lastPurchaseSubmitTime || 0)) < 5000) {
+            return;
+          }
+          this._lastPurchaseSubmitSig = poSig;
+          this._lastPurchaseSubmitTime = Date.now();
+
+          this._isSubmittingPurchase = true;
+          if (poSubmitBtn) poSubmitBtn.disabled = true;
+
+          const catObj = (this.data.categories || []).find(c => c.id === selectedCatId || c.name === selectedCatId) || 
+            defaultMetalCat ||
+            { id: 'cat-nacional', name: 'Nacional' };
+          const isExtras = Boolean(catObj.type === 'extras' || catObj.isExtra);
+
+          // Prioridad 1: Si se seleccionó un producto específico del autocompletado (prodId) y su SKU/nombre coincide
+          let targetProd = null;
+          if (prodId) {
+            const candidate = (this.data.products || []).find(p => String(p.id) === String(prodId));
+            if (
+              candidate &&
+              (!prodSku || (candidate.sku && candidate.sku.toLowerCase().trim() === prodSku.toLowerCase().trim())) &&
+              (!candidate.name || candidate.name.toLowerCase().trim() === prodName.toLowerCase().trim())
+            ) {
               targetProd = candidate;
+            }
+          }
+
+          // Prioridad 2: Coincidencia por Código (SKU) exacto y nombre coincidente
+          if (!targetProd && prodSku) {
+            const normSku = prodSku.toLowerCase().trim();
+            if (normSku === 'bl') {
+              targetProd = (this.data.products || []).find(p =>
+                p.sku && p.sku.toLowerCase().trim() === 'bl' &&
+                p.name && p.name.toLowerCase().trim() === prodName.toLowerCase().trim()
+              );
+            } else {
+              targetProd = (this.data.products || []).find(p =>
+                p.sku && p.sku.toLowerCase().trim() === normSku &&
+                (!p.name || p.name.toLowerCase().trim() === prodName.toLowerCase().trim())
+              );
             }
           }
 
@@ -3486,9 +3600,9 @@ class NexusApp {
               id: newProdId,
               sku: newSku,
               name: prodName,
-              measureType: measureType,
-              weightUnit: isPesaje ? 'g' : 'u.',
-              unit: isPesaje ? 'g' : 'u.',
+              measureType: isExtras ? 'Unidades' : measureType,
+              weightUnit: (isExtras || !isPesaje) ? 'u.' : 'g',
+              unit: (isExtras || !isPesaje) ? 'u.' : 'g',
               category: catObj.id,
               categoryName: catObj.name,
               isExtra: isExtras,
@@ -3496,8 +3610,8 @@ class NexusApp {
               cost: unitCost,
               price: 0,
               stock: quantity, // Stock inicial igual a la cantidad comprada
-              pieceWeight: isUnidades ? (productGrams || 0) : 0,
-              weight: isUnidades ? (productGrams || 0) : 0,
+              pieceWeight: (!isExtras && isUnidades) ? (productGrams || 0) : 0,
+              weight: (!isExtras && isUnidades) ? (productGrams || 0) : 0,
               minStock: isUnidades ? 1 : 0.5,
               status: quantity > 0 ? 'active' : 'out_of_stock',
               sold30d: 0,
@@ -3506,10 +3620,10 @@ class NexusApp {
             this.data.products.unshift(targetProd);
           } else {
             // Reabastecimiento de producto existente
-            targetProd.measureType = measureType;
+            targetProd.measureType = isExtras ? 'Unidades' : measureType;
             targetProd.category = catObj.id;
             targetProd.categoryName = catObj.name;
-            if (isExtras) targetProd.isExtra = true;
+            targetProd.isExtra = isExtras;
             if (supp && supp !== 'Proveedor General') {
               targetProd.supplier = supp;
             } else if (!targetProd.supplier) {
@@ -3520,7 +3634,7 @@ class NexusApp {
             if (unitCost > 0) {
               targetProd.cost = unitCost;
             }
-            if (isUnidades && productGrams > 0) {
+            if (isUnidades && productGrams > 0 && !isExtras) {
               targetProd.pieceWeight = productGrams;
               targetProd.weight = productGrams;
             }
@@ -3667,10 +3781,14 @@ class NexusApp {
             }
           }
 
-          // 4. Guardar persistencia en MongoDB y db.json
+          // 4. Cerrar modal y limpiar formulario de inmediato para impedir doble envío durante la espera de red
+          poForm.reset();
+          this.closeModal('purchase-modal');
+
+          // 5. Guardar persistencia en MongoDB y db.json
           await this.savePersistence();
 
-          // 5. Sincronizar vistas y tablas en toda la aplicación
+          // 6. Sincronizar vistas y tablas en toda la aplicación
           this.syncAllModules();
           this.renderFinComprasTable();
           this.renderRepCompras();
@@ -3680,14 +3798,11 @@ class NexusApp {
           this.renderDashboardMetrics();
           this.renderPOSProducts();
 
-          poForm.reset();
-          this.closeModal('purchase-modal');
-
           const unitLabel = isUnidades ? 'u.' : (targetProd.weightUnit || 'g');
           const gramsMsg = totalGramsAdded > 0 ? `, +${totalGramsAdded}g` : '';
           this.showToast(`Orden #${newPO.id} creada e inventario actualizado (+${quantity} ${unitLabel}${gramsMsg} en ${catObj.name})`, 'success');
 
-          // 6. Emitir recibo térmico de la orden de compra automáticamente
+          // 7. Emitir recibo térmico de la orden de compra automáticamente
           try {
             this.showPurchaseReceiptModal(newPO.id);
           } catch(receiptErr) {
@@ -3696,6 +3811,9 @@ class NexusApp {
         } catch(err) {
           console.error('[NexusApp] Error creando orden de compra:', err);
           this.showToast(`Error al procesar orden de compra: ${err.message}`, 'danger');
+        } finally {
+          this._isSubmittingPurchase = false;
+          if (poSubmitBtn) poSubmitBtn.disabled = false;
         }
       });
     }
@@ -3705,6 +3823,7 @@ class NexusApp {
     if (addProdForm) {
       addProdForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (this._isSubmittingProduct) return;
         if (!this.canPerformAction('create', 'product')) {
           this.showToast('Acceso Denegado: Tu rol no tiene permisos para crear productos en el catálogo.', 'danger');
           return;
@@ -3719,11 +3838,34 @@ class NexusApp {
 
         const catId = document.getElementById('new-prod-cat').value;
         const catObj = (this.data.categories || []).find(c => c.id === catId || c.name === catId);
-        const isExtraCat = catObj && (catObj.type === 'extras' || catObj.isExtra);
+        const isExtraCat = Boolean(catObj && (catObj.type === 'extras' || catObj.isExtra));
 
         if (measureType === 'Unidades' && !isExtraCat && pieceWeight <= 0) {
           this.showToast('Por favor ingresa el peso del producto (g) para calcular el gramaje del lote y sincronizar la categoría.', 'warning');
           document.getElementById('new-prod-piece-weight')?.focus();
+          return;
+        }
+
+        // Validación estricta contra códigos (SKU) duplicados o doble ingreso accidental
+        const cleanSku = (sku || '001').trim();
+        const normSku = cleanSku.toLowerCase();
+        const existingSkuProd = (this.data.products || []).find(prod => {
+          if (!prod || !prod.sku) return false;
+          const pSku = String(prod.sku).trim().toLowerCase();
+          if (pSku !== normSku) return false;
+          // El código "BL" se comparte entre distintos calibres de balinería, pero bloquea si tiene el mismo nombre
+          if (normSku === 'bl') {
+            return String(prod.name || '').trim().toLowerCase() === name.toLowerCase();
+          }
+          return true;
+        });
+
+        if (existingSkuProd) {
+          this.showToast(
+            `⚠️ El código "${cleanSku}" ya está registrado en el producto "${existingSkuProd.name}" (${existingSkuProd.categoryName || existingSkuProd.category || 'General'}). Usa un código distinto o edita el producto existente.`,
+            'warning'
+          );
+          document.getElementById('new-prod-sku')?.focus();
           return;
         }
 
@@ -3733,50 +3875,70 @@ class NexusApp {
         const stock = this.parseCleanNumber(document.getElementById('new-prod-stock')?.value);
         const active = document.getElementById('new-prod-active')?.checked !== false;
 
-        const categoryName = catObj ? catObj.name : 'General';
-
-        const newP = {
-          id: this.generateUniqueId('PRD', this.data.products),
-          sku: sku || '001',
-          name,
-          measureType: isExtraCat ? 'Unidades' : measureType,
-          weightUnit: isExtraCat ? 'u.' : weightUnit,
-          unit: isExtraCat ? 'u.' : weightUnit,
-          pieceWeight: isExtraCat ? 0 : pieceWeight,
-          weight: isExtraCat ? 0 : pieceWeight,
-          category: catId,
-          categoryName,
-          supplier,
-          cost,
-          price,
-          stock,
-          isExtra: isExtraCat ? true : false,
-          minStock: measureType === 'Pesaje' ? (weightUnit === 'kg' ? 0.001 : (weightUnit === 'mg' ? 500 : 0.5)) : 2,
-          status: !active ? 'inactive' : (stock > 0 ? 'active' : 'out_of_stock')
-        };
-
-        this.data.products.unshift(newP);
-        const addedCost = this.getProductTotalCost(newP);
-        const addedGrams = this.getGramsFromProduct(newP);
-        if (!this.data.kpis) this.data.kpis = {};
-        if (addedCost > 0) {
-          this.data.kpis.inventoryValue = Math.round(((this.data.kpis.inventoryValue || 0) + addedCost) * 100) / 100;
+        // Candado adicional contra doble envío en ráfaga (< 5 segundos con los mismos datos)
+        const submitSignature = `${normSku}|${name.toLowerCase()}|${catId}|${pieceWeight}|${stock}|${cost}`;
+        if (this._lastProductSubmitSig === submitSignature && (Date.now() - (this._lastProductSubmitTime || 0)) < 5000) {
+          return;
         }
-        if (addedGrams > 0) {
-          const currentGrams = this.data.kpis.avgCostGrams || 0;
-          const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
-          const newTotalCost = (currentGrams * currentAvgCost) + addedCost;
-          const newTotalGrams = currentGrams + addedGrams;
-          this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
-          this.data.kpis.avgCostPerGram = newTotalGrams > 0 ? Math.round(newTotalCost / newTotalGrams) : currentAvgCost;
+
+        const submitBtn = addProdForm.querySelector('button[type="submit"]');
+        this._isSubmittingProduct = true;
+        this._lastProductSubmitSig = submitSignature;
+        this._lastProductSubmitTime = Date.now();
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+          const categoryName = catObj ? catObj.name : 'General';
+
+          const newP = {
+            id: this.generateUniqueId('PRD', this.data.products),
+            sku: cleanSku,
+            name,
+            measureType: isExtraCat ? 'Unidades' : measureType,
+            weightUnit: isExtraCat ? 'u.' : weightUnit,
+            unit: isExtraCat ? 'u.' : weightUnit,
+            pieceWeight: isExtraCat ? 0 : pieceWeight,
+            weight: isExtraCat ? 0 : pieceWeight,
+            category: catObj ? catObj.id : catId,
+            categoryName,
+            supplier,
+            cost,
+            price,
+            stock,
+            isExtra: isExtraCat,
+            minStock: measureType === 'Pesaje' ? (weightUnit === 'kg' ? 0.001 : (weightUnit === 'mg' ? 500 : 0.5)) : 2,
+            status: !active ? 'inactive' : (stock > 0 ? 'active' : 'out_of_stock')
+          };
+
+          this.data.products.unshift(newP);
+          const addedCost = this.getProductTotalCost(newP);
+          const addedGrams = this.getGramsFromProduct(newP);
+          if (!this.data.kpis) this.data.kpis = {};
+          if (addedCost > 0) {
+            this.data.kpis.inventoryValue = Math.round(((this.data.kpis.inventoryValue || 0) + addedCost) * 100) / 100;
+          }
+          if (addedGrams > 0) {
+            const currentGrams = this.data.kpis.avgCostGrams || 0;
+            const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
+            const newTotalCost = (currentGrams * currentAvgCost) + addedCost;
+            const newTotalGrams = currentGrams + addedGrams;
+            this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
+            this.data.kpis.avgCostPerGram = newTotalGrams > 0 ? Math.round(newTotalCost / newTotalGrams) : currentAvgCost;
+          }
+          this.syncAllCategoryGrams();
+
+          // Cerrar modal y limpiar formulario de inmediato para evitar doble clic durante el guardado en red
+          addProdForm.reset();
+          this.closeModal('product-modal');
+
+          await this.savePersistence();
+          this.syncAllModules();
+          const unitLabel = isExtraCat ? 'u.' : (measureType === 'Pesaje' ? weightUnit : 'u.');
+          this.showToast(`Producto "${name}" (${stock} ${unitLabel}) registrado en ${categoryName}`, 'success');
+        } finally {
+          this._isSubmittingProduct = false;
+          if (submitBtn) submitBtn.disabled = false;
         }
-        this.syncAllCategoryGrams();
-        await this.savePersistence();
-        this.syncAllModules();
-        addProdForm.reset();
-        this.closeModal('product-modal');
-        const unitLabel = isExtraCat ? 'u.' : (measureType === 'Pesaje' ? weightUnit : 'u.');
-        this.showToast(`Producto "${name}" (${stock} ${unitLabel}) registrado en ${categoryName}`, 'success');
       });
     }
 
@@ -3785,6 +3947,7 @@ class NexusApp {
     if (editProdForm) {
       editProdForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (this._isSubmittingProduct) return;
         if (!this.canPerformAction('edit', 'product')) {
           this.showToast('Acceso Denegado: Tu rol no tiene permisos para modificar productos del catálogo.', 'danger');
           return;
@@ -3792,127 +3955,170 @@ class NexusApp {
         const id = document.getElementById('edit-prod-id').value;
         const p = this.data.products.find(prod => String(prod.id) === String(id));
         if (p) {
-          const oldProdCost = this.getProductTotalCost(p);
-          const oldProdGrams = this.getGramsFromProduct(p);
-          const oldGrams = oldProdGrams;
-          const oldCatId = p.category;
-          const oldCatName = p.categoryName;
-
-          p.sku = document.getElementById('edit-prod-sku').value.trim();
-          p.name = document.getElementById('edit-prod-name').value.trim();
-          p.measureType = document.getElementById('edit-prod-measure-type').value;
-          p.weightUnit = p.measureType === 'Pesaje' ? (document.getElementById('edit-prod-weight-unit')?.value || 'g') : 'u.';
-          p.unit = p.weightUnit;
-          const pieceWeight = p.measureType === 'Unidades'
+          const newSkuVal = document.getElementById('edit-prod-sku').value.trim();
+          const newNameVal = document.getElementById('edit-prod-name').value.trim();
+          const editMeasureType = document.getElementById('edit-prod-measure-type').value;
+          const pieceWeight = editMeasureType === 'Unidades'
             ? this.parseCleanNumber(document.getElementById('edit-prod-piece-weight')?.value)
             : 0;
 
           const editCatId = document.getElementById('edit-prod-cat').value;
           const catObj = (this.data.categories || []).find(c => c.id === editCatId || c.name === editCatId);
-          const isExtraCat = catObj && (catObj.type === 'extras' || catObj.isExtra);
+          const isExtraCat = Boolean(catObj && (catObj.type === 'extras' || catObj.isExtra));
 
-          if (p.measureType === 'Unidades' && !isExtraCat && pieceWeight <= 0) {
+          if (editMeasureType === 'Unidades' && !isExtraCat && pieceWeight <= 0) {
             this.showToast('Por favor ingresa el peso del producto (g) para calcular el gramaje del lote y sincronizar la categoría.', 'warning');
             document.getElementById('edit-prod-piece-weight')?.focus();
             return;
           }
 
-          p.pieceWeight = isExtraCat ? 0 : pieceWeight;
-          p.weight = isExtraCat ? 0 : pieceWeight;
-          p.isExtra = isExtraCat ? true : false;
-          p.category = editCatId;
-          p.categoryName = catObj ? catObj.name : 'General';
-          if (isExtraCat) {
-            p.measureType = 'Unidades';
-            p.weightUnit = 'u.';
-            p.unit = 'u.';
-          }
-          p.supplier = document.getElementById('edit-prod-supplier').value;
-          p.cost = this.parseCleanNumber(document.getElementById('edit-prod-cost')?.value);
-          p.price = Number(p.price || 0); // Preserva precio previo si existía, o 0 para fijar en POS
-
-          // GRAMAJE / CANTIDAD TOTAL DEL ARTÍCULO
-          let rawStock = document.getElementById('edit-prod-stock')?.value;
-          let newStock = this.parseCleanNumber(rawStock);
-          const cleanNewStock = isNaN(newStock) || newStock < 0 ? 0 : Math.round(newStock * 100) / 100;
-          const initialModalStock = (this._editingProductId === String(p.id) && this._editingProductInitialStock !== undefined)
-            ? Number(this._editingProductInitialStock)
-            : (parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0);
-
-          if (!this._manualStockOverrideIds) this._manualStockOverrideIds = new Set();
-          if (Math.abs(cleanNewStock - initialModalStock) >= 0.0001) {
-            // El administrador modificó explícitamente el stock en el modal
-            this._manualStockOverrideIds.add(String(p.id));
-          } else {
-            // El administrador solo editó nombre/código/costo/categoría sin tocar stock:
-            // permitir que mergeWithRemoteBeforeSave preserve cualquier venta POS ocurrida en otra terminal
-            this._manualStockOverrideIds.delete(String(p.id));
-          }
-          p.stock = cleanNewStock;
-
-          const active = document.getElementById('edit-prod-active')?.checked !== false;
-          if (!active) {
-            p.status = 'inactive';
-          } else if (p.stock <= 0) {
-            p.status = 'out_of_stock';
-          } else if (p.stock <= (p.measureType === 'Pesaje' ? (p.weightUnit === 'kg' ? 0.001 : 0.5) : 2)) {
-            p.status = 'low_stock';
-          } else {
-            p.status = 'active';
-          }
-
-          // Sincronizar KPIs de costo general y adquisición si cambió stock o costo manual
-          const newProdCost = this.getProductTotalCost(p);
-          const newProdGrams = this.getGramsFromProduct(p);
-          const diffCost = newProdCost - oldProdCost;
-          const diffGrams = newProdGrams - oldProdGrams;
-          if (!this.data.kpis) this.data.kpis = {};
-          if (diffCost !== 0) {
-            this.data.kpis.inventoryValue = Math.max(0, Math.round(((this.data.kpis.inventoryValue || 0) + diffCost) * 100) / 100);
-          }
-          if (diffGrams !== 0) {
-            const currentGrams = this.data.kpis.avgCostGrams || 0;
-            const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
-            const newTotalCost = Math.max(0, (currentGrams * currentAvgCost) + diffCost);
-            const newTotalGrams = Math.max(1, currentGrams + diffGrams);
-            this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
-            this.data.kpis.avgCostPerGram = Math.round(newTotalCost / newTotalGrams);
-          }
-
-          // Sincronizar automáticamente disponibilidad de gramos en todas las categorías
-          this.syncAllCategoryGrams();
-
-          // SYNCHRONIZATION WITH BACKEND (MongoDB & LocalStorage & db.json)
-          await this.savePersistence();
-
-          // INSTANT MULTI-MODULE RE-RENDERING (Tablas, Métricas, Informes y Gráficas)
-          this.syncAllModules();
-
-          // Cart synchronization: if product is in cart and stock is 0, update cart
-          const cartItem = this.cart.find(c => String(c.product?.id) === String(p.id));
-          if (cartItem) {
-            if (p.stock <= 0) {
-              this.cart = this.cart.filter(c => String(c.product?.id) !== String(p.id));
-              this.renderCart();
-              this.showToast(`"${p.name}" se retiró del carrito porque se marcó como agotado`, 'warning');
-            } else if (cartItem.qty > p.stock) {
-              cartItem.qty = p.stock;
-              this.renderCart();
-              this.showToast(`Cantidad de "${p.name}" en carrito ajustada al stock actual (${p.stock})`, 'warning');
+          // Si el usuario cambió el código (SKU) a uno distinto del que tenía, validar que no colisione con otro producto
+          const prevSkuNorm = String(p.sku || '').trim().toLowerCase();
+          const nextSkuNorm = newSkuVal.toLowerCase();
+          if (nextSkuNorm && nextSkuNorm !== prevSkuNorm && nextSkuNorm !== 'bl') {
+            const skuCollision = (this.data.products || []).find(other =>
+              other && String(other.id) !== String(p.id) && String(other.sku || '').trim().toLowerCase() === nextSkuNorm
+            );
+            if (skuCollision) {
+              this.showToast(
+                `⚠️ El código "${newSkuVal}" ya pertenece al producto "${skuCollision.name}". Elige un código único.`,
+                'warning'
+              );
+              document.getElementById('edit-prod-sku')?.focus();
+              return;
             }
           }
 
-          this.closeModal('edit-product-modal');
+          const editSubmitBtn = editProdForm.querySelector('button[type="submit"]');
+          this._isSubmittingProduct = true;
+          if (editSubmitBtn) editSubmitBtn.disabled = true;
 
-          const unitLabel = p.measureType === 'Pesaje' ? (p.weightUnit || 'g') : 'u.';
-          const statusText = p.status === 'out_of_stock' ? 'Agotado (Sin Stock)' : (p.status === 'low_stock' ? 'Stock Bajo' : (p.status === 'inactive' ? 'Inactivo' : 'En Stock'));
-          this.showToast(`Stock de "${p.name}" sincronizado: ${p.stock} ${unitLabel} (${statusText})`, 'success');
+          try {
+            const oldProdCost = this.getProductTotalCost(p);
+            const oldProdGrams = this.getGramsFromProduct(p);
+
+            p.sku = newSkuVal;
+            p.name = newNameVal;
+            p.measureType = editMeasureType;
+            p.weightUnit = p.measureType === 'Pesaje' ? (document.getElementById('edit-prod-weight-unit')?.value || 'g') : 'u.';
+            p.unit = p.weightUnit;
+
+            p.pieceWeight = isExtraCat ? 0 : pieceWeight;
+            p.weight = isExtraCat ? 0 : pieceWeight;
+            p.isExtra = isExtraCat;
+            p.category = catObj ? catObj.id : editCatId;
+            p.categoryName = catObj ? catObj.name : 'General';
+            if (isExtraCat) {
+              p.measureType = 'Unidades';
+              p.weightUnit = 'u.';
+              p.unit = 'u.';
+            }
+            p.supplier = document.getElementById('edit-prod-supplier').value;
+            p.cost = this.parseCleanNumber(document.getElementById('edit-prod-cost')?.value);
+            p.price = Number(p.price || 0); // Preserva precio previo si existía, o 0 para fijar en POS
+
+            // GRAMAJE / CANTIDAD TOTAL DEL ARTÍCULO
+            let rawStock = document.getElementById('edit-prod-stock')?.value;
+            let newStock = this.parseCleanNumber(rawStock);
+            const cleanNewStock = isNaN(newStock) || newStock < 0 ? 0 : Math.round(newStock * 100) / 100;
+            const initialModalStock = (this._editingProductId === String(p.id) && this._editingProductInitialStock !== undefined)
+              ? Number(this._editingProductInitialStock)
+              : (parseFloat(String(p.stock ?? 0).replace(',', '.')) || 0);
+
+            if (!this._manualStockOverrideIds) this._manualStockOverrideIds = new Set();
+            if (Math.abs(cleanNewStock - initialModalStock) >= 0.0001) {
+              // El administrador modificó explícitamente el stock en el modal
+              this._manualStockOverrideIds.add(String(p.id));
+            } else {
+              // El administrador solo editó nombre/código/costo/categoría sin tocar stock:
+              // permitir que mergeWithRemoteBeforeSave preserve cualquier venta POS ocurrida en otra terminal
+              this._manualStockOverrideIds.delete(String(p.id));
+            }
+            p.stock = cleanNewStock;
+
+            const active = document.getElementById('edit-prod-active')?.checked !== false;
+            if (!active) {
+              p.status = 'inactive';
+            } else if (p.stock <= 0) {
+              p.status = 'out_of_stock';
+            } else if (p.stock <= (p.measureType === 'Pesaje' ? (p.weightUnit === 'kg' ? 0.001 : 0.5) : 2)) {
+              p.status = 'low_stock';
+            } else {
+              p.status = 'active';
+            }
+
+            // Sincronizar KPIs de costo general y adquisición si cambió stock o costo manual
+            const newProdCost = this.getProductTotalCost(p);
+            const newProdGrams = this.getGramsFromProduct(p);
+            const diffCost = newProdCost - oldProdCost;
+            const diffGrams = newProdGrams - oldProdGrams;
+            if (!this.data.kpis) this.data.kpis = {};
+            if (diffCost !== 0) {
+              this.data.kpis.inventoryValue = Math.max(0, Math.round(((this.data.kpis.inventoryValue || 0) + diffCost) * 100) / 100);
+            }
+            if (diffGrams !== 0) {
+              const currentGrams = this.data.kpis.avgCostGrams || 0;
+              const currentAvgCost = this.data.kpis.avgCostPerGram || 0;
+              const newTotalCost = Math.max(0, (currentGrams * currentAvgCost) + diffCost);
+              const newTotalGrams = Math.max(1, currentGrams + diffGrams);
+              this.data.kpis.avgCostGrams = Math.round(newTotalGrams * 100) / 100;
+              this.data.kpis.avgCostPerGram = Math.round(newTotalCost / newTotalGrams);
+            }
+
+            // Sincronizar automáticamente disponibilidad de gramos en todas las categorías
+            this.syncAllCategoryGrams();
+
+            this.closeModal('edit-product-modal');
+
+            // SYNCHRONIZATION WITH BACKEND (MongoDB & LocalStorage & db.json)
+            await this.savePersistence();
+
+            // INSTANT MULTI-MODULE RE-RENDERING (Tablas, Métricas, Informes y Gráficas)
+            this.syncAllModules();
+
+            // Cart synchronization: if product is in cart and stock is 0, update cart
+            const cartItem = this.cart.find(c => String(c.product?.id) === String(p.id));
+            if (cartItem) {
+              if (p.stock <= 0) {
+                this.cart = this.cart.filter(c => String(c.product?.id) !== String(p.id));
+                this.renderCart();
+                this.showToast(`"${p.name}" se retiró del carrito porque se marcó como agotado`, 'warning');
+              } else if (cartItem.qty > p.stock) {
+                cartItem.qty = p.stock;
+                this.renderCart();
+                this.showToast(`Cantidad de "${p.name}" en carrito ajustada al stock actual (${p.stock})`, 'warning');
+              }
+            }
+
+            const unitLabel = p.measureType === 'Pesaje' ? (p.weightUnit || 'g') : 'u.';
+            const statusText = p.status === 'out_of_stock' ? 'Agotado (Sin Stock)' : (p.status === 'low_stock' ? 'Stock Bajo' : (p.status === 'inactive' ? 'Inactivo' : 'En Stock'));
+            this.showToast(`Producto "${p.name}" actualizado (${p.categoryName}): ${p.stock} ${unitLabel} (${statusText})`, 'success');
+          } finally {
+            this._isSubmittingProduct = false;
+            if (editSubmitBtn) editSubmitBtn.disabled = false;
+          }
         }
       });
     }
   }
 
   openPurchaseModal() {
+    const poForm = document.getElementById('add-purchase-form');
+    if (poForm) poForm.reset();
+    this._lastPurchaseCatWasExtras = false;
+    this._lastPurchaseAutoCost = null;
+    const hiddenId = document.getElementById('po-product-id');
+    if (hiddenId) hiddenId.value = '';
+    const nameInput = document.getElementById('po-product-name');
+    if (nameInput) nameInput.value = '';
+    const skuInput = document.getElementById('po-product-sku');
+    if (skuInput) skuInput.value = '';
+    const unitCostInput = document.getElementById('po-unit-cost');
+    if (unitCostInput) unitCostInput.value = '';
+    const gramsInput = document.getElementById('po-product-grams');
+    if (gramsInput) gramsInput.value = '';
+    const measureSelect = document.getElementById('po-measure-type');
+    if (measureSelect) measureSelect.value = 'Pesaje';
     this.populatePurchaseProductSelect();
     this.openModal('purchase-modal');
   }
@@ -3923,10 +4129,12 @@ class NexusApp {
     const catSelect = document.getElementById('po-category-select');
 
     if (catSelect && this.data.categories) {
+      const defaultMetalCat = (this.data.categories || []).find(c => c.type !== 'extras' && !c.isExtra) || (this.data.categories || [])[0];
+      const defaultCatId = defaultMetalCat ? defaultMetalCat.id : '';
       catSelect.innerHTML = this.data.categories.map(c => 
-        `<option value="${this.escapeHtml(c.id)}">${this.escapeHtml(c.name)}</option>`
+        `<option value="${this.escapeHtml(c.id)}" ${c.id === defaultCatId ? 'selected' : ''}>${this.escapeHtml(c.name)}</option>`
       ).join('');
-      if (!catSelect.value) catSelect.value = 'oro18k';
+      if (defaultCatId) catSelect.value = defaultCatId;
     }
 
     if (suppSelect) {
@@ -3943,7 +4151,8 @@ class NexusApp {
         const isPesaje = (p.measureType || 'Pesaje') === 'Pesaje';
         const unit = isPesaje ? (p.weightUnit || 'g') : 'u.';
         const weightInfo = !isPesaje && (p.pieceWeight || p.weight) ? ` · ${p.pieceWeight || p.weight}g` : '';
-        return `<option value="${this.escapeHtml(p.name)}">${this.escapeHtml(p.name)} (Código: ${this.escapeHtml(p.sku || p.id)} · Stock: ${p.stock} ${unit}${weightInfo})</option>`;
+        const codeLabel = this.escapeHtml(p.sku || p.id);
+        return `<option value="${this.escapeHtml(p.name)} [Código: ${codeLabel}]">${this.escapeHtml(p.name)} (Código: ${codeLabel} · Stock: ${p.stock} ${unit}${weightInfo})</option>`;
       }).join('');
     }
 
@@ -3957,37 +4166,53 @@ class NexusApp {
       measureSelect.value = 'Pesaje';
     }
 
-    this.onPurchaseMeasureTypeChange();
-
     const statusSelect = document.getElementById('po-payment-status');
     if (statusSelect) statusSelect.value = 'Pagado Total';
     this.onPurchasePaymentStatusChange();
-
-    const nameInput = document.getElementById('po-product-name');
-    if (nameInput && nameInput.value) {
-      this.onPurchaseProductNameInput();
-    } else {
-      this.updatePurchaseCalculations();
-    }
+    this.onPurchaseCategoryChange();
   }
 
   onPurchaseCategoryChange() {
     const catSelect = document.getElementById('po-category-select');
     if (!catSelect) return;
     const catId = catSelect.value;
-    const catObj = (this.data.categories || []).find(c => c.id === catId);
-    if (catObj && (catObj.type === 'extras' || catObj.isExtra || catObj.measureType === 'Unidades' || catId === 'relojes' || catId === 'accesorios')) {
-      const measureSelect = document.getElementById('po-measure-type');
+    const catObj = (this.data.categories || []).find(c => c.id === catId || c.name === catId);
+    const measureSelect = document.getElementById('po-measure-type');
+    const unitCostInput = document.getElementById('po-unit-cost');
+    const currentCostVal = this.parseCleanNumber(unitCostInput?.value);
+    const canAutoUpdateCost = !unitCostInput?.value || currentCostVal === 0 || (this._lastPurchaseAutoCost !== null && this._lastPurchaseAutoCost !== undefined && currentCostVal === this._lastPurchaseAutoCost);
+
+    const isExtras = Boolean(catObj && (catObj.type === 'extras' || catObj.isExtra));
+    const isFixedUnitsCat = Boolean(isExtras || (catObj && (catObj.measureType === 'Unidades' || catId === 'relojes' || catId === 'accesorios')));
+
+    if (isFixedUnitsCat) {
+      this._lastPurchaseCatWasExtras = true;
       if (measureSelect) {
         measureSelect.value = 'Unidades';
-        this.onPurchaseMeasureTypeChange();
+      }
+    } else if (this._lastPurchaseCatWasExtras) {
+      this._lastPurchaseCatWasExtras = false;
+      const hiddenId = document.getElementById('po-product-id')?.value;
+      if (!hiddenId && measureSelect) {
+        measureSelect.value = 'Pesaje';
       }
     }
+
+    if (unitCostInput && canAutoUpdateCost) {
+      if (catObj && catObj.cost && Number(catObj.cost) > 0) {
+        unitCostInput.value = this.formatNumberWithCommas(catObj.cost);
+        this._lastPurchaseAutoCost = Number(catObj.cost) || 0;
+      } else if (this._lastPurchaseAutoCost) {
+        unitCostInput.value = '';
+        this._lastPurchaseAutoCost = 0;
+      }
+    }
+
     const catInfo = document.getElementById('po-preview-cat-info');
     if (catInfo && catObj) {
       catInfo.textContent = `Categoría: ${catObj.name}`;
     }
-    this.updatePurchaseCalculations();
+    this.onPurchaseMeasureTypeChange();
   }
 
   onPurchasePaymentStatusChange() {
@@ -4005,6 +4230,9 @@ class NexusApp {
   onPurchaseMeasureTypeChange() {
     const measureSelect = document.getElementById('po-measure-type');
     const isPesaje = (measureSelect?.value || 'Pesaje') === 'Pesaje';
+    const catSelect = document.getElementById('po-category-select');
+    const catObj = catSelect ? (this.data.categories || []).find(c => c.id === catSelect.value || c.name === catSelect.value) : null;
+    const isExtras = Boolean(catObj && (catObj.type === 'extras' || catObj.isExtra));
 
     const qtyLabel = document.getElementById('po-quantity-label');
     const qtyUnit = document.getElementById('po-quantity-unit');
@@ -4025,14 +4253,24 @@ class NexusApp {
         gramsInput.value = '';
       }
     } else {
-      if (qtyLabel) qtyLabel.textContent = 'Cantidad (Unidades) *';
+      if (qtyLabel) qtyLabel.textContent = isExtras ? 'Cantidad de manillas (Unidades) *' : 'Cantidad (Unidades) *';
       if (qtyUnit) {
         qtyUnit.textContent = 'u.';
         qtyUnit.style.color = '#4F46E5';
       }
-      if (costLabel) costLabel.textContent = 'Costo unitario ($) *';
-      if (gramsGroup) gramsGroup.style.display = 'block';
-      if (gramsInput) gramsInput.required = false;
+      if (isExtras) {
+        if (costLabel) costLabel.textContent = 'Costo unitario ($) *';
+        if (gramsGroup) gramsGroup.style.display = 'none';
+        if (gramsInput) {
+          gramsInput.required = false;
+          gramsInput.value = '';
+        }
+      } else {
+        const pieceGrams = this.parseCleanNumber(gramsInput?.value);
+        if (costLabel) costLabel.textContent = pieceGrams > 0 ? 'Costo por gramo ($) *' : 'Costo unitario ($) *';
+        if (gramsGroup) gramsGroup.style.display = 'block';
+        if (gramsInput) gramsInput.required = false;
+      }
     }
 
     this.updatePurchaseCalculations();
@@ -4040,38 +4278,77 @@ class NexusApp {
 
   onPurchaseProductSkuInput() {
     const skuInput = document.getElementById('po-product-sku');
+    const nameInput = document.getElementById('po-product-name');
     const hiddenId = document.getElementById('po-product-id');
     const catInfo = document.getElementById('po-preview-cat-info');
     if (!skuInput) return;
     const skuVal = skuInput.value.trim().toLowerCase();
+    const currentName = (nameInput?.value || '').trim().toLowerCase();
     if (!skuVal) {
       if (hiddenId) hiddenId.value = '';
       if (catInfo) catInfo.textContent = 'Nuevo Producto para Inventario';
       return;
     }
 
-    const existing = (this.data.products || []).find(p => p.sku && p.sku.toLowerCase().trim() === skuVal);
+    // Para el código compartido 'BL' (Balinería), nunca sobrescribir el nombre con otro balín distinto
+    if (skuVal === 'bl') {
+      const existingBl = currentName
+        ? (this.data.products || []).find(p => p && p.sku && p.sku.toLowerCase().trim() === 'bl' && p.name && p.name.toLowerCase().trim() === currentName)
+        : null;
+      if (existingBl) {
+        if (hiddenId) hiddenId.value = existingBl.id;
+        const catSelect = document.getElementById('po-category-select');
+        if (catSelect && existingBl.category) catSelect.value = existingBl.category;
+        const measureSelect = document.getElementById('po-measure-type');
+        if (measureSelect) measureSelect.value = (existingBl.measureType || 'Unidades');
+        const unitCostInput = document.getElementById('po-unit-cost');
+        if (unitCostInput && (!unitCostInput.value || unitCostInput.value === '0')) {
+          unitCostInput.value = this.formatNumberWithCommas(existingBl.cost || 0);
+        }
+        const gramsInput = document.getElementById('po-product-grams');
+        if (gramsInput && (existingBl.measureType || 'Unidades') === 'Unidades') {
+          const val = existingBl.pieceWeight !== undefined && existingBl.pieceWeight !== null ? existingBl.pieceWeight : (existingBl.weight || 0);
+          if (val > 0) gramsInput.value = this.formatNumberWithCommas(val, true);
+        }
+        if (catInfo) catInfo.textContent = `Reabastecer Balinería: ${existingBl.name} (${existingBl.categoryName || existingBl.category})`;
+        this.onPurchaseMeasureTypeChange();
+      } else {
+        if (hiddenId) hiddenId.value = '';
+        if (catInfo) catInfo.textContent = currentName ? `Nueva Referencia de Balinería: ${nameInput.value.trim()} (Código BL)` : 'Código compartido Balinería (BL) — Escribe el nombre exacto';
+      }
+      return;
+    }
+
+    const existing = (this.data.products || []).find(p => p && p.sku && p.sku.toLowerCase().trim() === skuVal);
     if (existing) {
-      if (hiddenId) hiddenId.value = existing.id;
-      const nameInput = document.getElementById('po-product-name');
-      if (nameInput && (!nameInput.value.trim() || nameInput.value.trim().toLowerCase() !== existing.name.toLowerCase().trim())) {
-        nameInput.value = existing.name;
+      const existingNameLower = (existing.name || '').trim().toLowerCase();
+      if (!currentName || currentName === existingNameLower) {
+        if (hiddenId) hiddenId.value = existing.id;
+        if (nameInput && !currentName) {
+          nameInput.value = existing.name;
+        }
+        const catSelect = document.getElementById('po-category-select');
+        if (catSelect && existing.category) catSelect.value = existing.category;
+        const measureSelect = document.getElementById('po-measure-type');
+        if (measureSelect) measureSelect.value = (existing.measureType || 'Pesaje');
+        const unitCostInput = document.getElementById('po-unit-cost');
+        if (unitCostInput && (!unitCostInput.value || unitCostInput.value === '0')) {
+          unitCostInput.value = this.formatNumberWithCommas(existing.cost || 0);
+        }
+        const gramsInput = document.getElementById('po-product-grams');
+        if (gramsInput && (existing.measureType === 'Unidades')) {
+          const val = existing.pieceWeight !== undefined && existing.pieceWeight !== null ? existing.pieceWeight : (existing.weight || 0);
+          if (val > 0) gramsInput.value = this.formatNumberWithCommas(val, true);
+        }
+        if (catInfo) catInfo.textContent = `Reabastecer: ${existing.name} (${existing.categoryName || existing.category})`;
+        this.onPurchaseMeasureTypeChange();
+      } else {
+        // El usuario ya escribió otro nombre distinto: NO sobrescribir su nombre y advertir conflicto de SKU
+        if (hiddenId) hiddenId.value = '';
+        if (catInfo) {
+          catInfo.innerHTML = `<span style="color:#DC2626; font-weight:700;">⚠️ El código "${this.escapeHtml(skuInput.value.trim())}" ya pertenece a "${this.escapeHtml(existing.name)}"</span>`;
+        }
       }
-      const catSelect = document.getElementById('po-category-select');
-      if (catSelect && existing.category) catSelect.value = existing.category;
-      const measureSelect = document.getElementById('po-measure-type');
-      if (measureSelect) measureSelect.value = (existing.measureType || 'Pesaje');
-      const unitCostInput = document.getElementById('po-unit-cost');
-      if (unitCostInput && (!unitCostInput.value || unitCostInput.value === '0')) {
-        unitCostInput.value = this.formatNumberWithCommas(existing.cost || 0);
-      }
-      const gramsInput = document.getElementById('po-product-grams');
-      if (gramsInput && (existing.measureType === 'Unidades')) {
-        const val = existing.pieceWeight !== undefined && existing.pieceWeight !== null ? existing.pieceWeight : (existing.weight || 0);
-        if (val > 0) gramsInput.value = this.formatNumberWithCommas(val, true);
-      }
-      if (catInfo) catInfo.textContent = `Reabastecer: ${existing.name} (${existing.categoryName || existing.category})`;
-      this.onPurchaseMeasureTypeChange();
     } else {
       if (hiddenId) hiddenId.value = '';
       if (catInfo) catInfo.textContent = 'Nuevo Producto para Inventario (Código Único)';
@@ -4086,6 +4363,9 @@ class NexusApp {
     const skuInput = document.getElementById('po-product-sku');
     const catInfo = document.getElementById('po-preview-cat-info');
     const catSelect = document.getElementById('po-category-select');
+    const unitCostInput = document.getElementById('po-unit-cost');
+    const gramsInput = document.getElementById('po-product-grams');
+    const measureSelect = document.getElementById('po-measure-type');
 
     if (!rawVal) {
       if (hiddenId) hiddenId.value = '';
@@ -4093,74 +4373,107 @@ class NexusApp {
       return;
     }
 
+    // Caso 1: El usuario seleccionó una sugerencia explícita del datalist ("NOMBRE [Código: XXX]")
+    const dlMatch = rawVal.match(/^(.*?)\s*\[Código:\s*([^\]]+)\]\s*$/i);
+    if (dlMatch) {
+      const cleanName = dlMatch[1].trim();
+      const selectedCode = dlMatch[2].trim();
+      const cleanNameLower = cleanName.toLowerCase();
+      const codeLower = selectedCode.toLowerCase();
+      nameInput.value = cleanName;
+
+      const targetProd = (this.data.products || []).find(p =>
+        p && String(p.sku || p.id || '').trim().toLowerCase() === codeLower &&
+        String(p.name || '').trim().toLowerCase() === cleanNameLower
+      ) || (this.data.products || []).find(p =>
+        p && (String(p.sku || '').trim().toLowerCase() === codeLower || String(p.id || '').trim().toLowerCase() === codeLower)
+      );
+
+      if (targetProd) {
+        if (hiddenId) hiddenId.value = targetProd.id;
+        if (skuInput) skuInput.value = targetProd.sku || targetProd.id;
+        if (unitCostInput) {
+          unitCostInput.value = targetProd.cost ? this.formatNumberWithCommas(targetProd.cost) : '';
+        }
+        if (catSelect && targetProd.category) {
+          catSelect.value = targetProd.category;
+        }
+        const isUnidades = (targetProd.measureType || 'Pesaje') === 'Unidades';
+        if (measureSelect) {
+          measureSelect.value = isUnidades ? 'Unidades' : 'Pesaje';
+        }
+        if (gramsInput) {
+          if (isUnidades) {
+            const val = targetProd.pieceWeight !== undefined && targetProd.pieceWeight !== null ? targetProd.pieceWeight : (targetProd.weight || 0);
+            gramsInput.value = val > 0 ? this.formatNumberWithCommas(val, true) : '';
+          } else {
+            gramsInput.value = '';
+          }
+        }
+        if (catInfo) {
+          catInfo.textContent = `Reabastecer: ${targetProd.name} (Código: ${targetProd.sku || targetProd.id} · ${targetProd.categoryName || targetProd.category || 'General'})`;
+        }
+        this.onPurchaseMeasureTypeChange();
+        return;
+      }
+    }
+
+    // Caso 2: Escritura manual del nombre (NO secuestrar ni autocompletar SKU de otro producto homónimo)
     const valLower = rawVal.toLowerCase();
     const currentSku = (skuInput?.value || '').trim().toLowerCase();
 
-    // Si ya hay un SKU escrito, solo buscar producto con ese SKU específico
-    let targetProd = null;
     if (currentSku) {
-      targetProd = (this.data.products || []).find(p => p.sku && p.sku.toLowerCase().trim() === currentSku);
-    } else {
-      // Coincidencia exacta por nombre
-      targetProd = (this.data.products || []).find(p => p.name && p.name.toLowerCase().trim() === valLower);
-    }
-
-    const unitCostInput = document.getElementById('po-unit-cost');
-    const gramsInput = document.getElementById('po-product-grams');
-    const measureSelect = document.getElementById('po-measure-type');
-
-    if (targetProd) {
-      if (hiddenId) hiddenId.value = targetProd.id;
-      if (skuInput && !skuInput.value.trim()) skuInput.value = targetProd.sku || targetProd.id;
-      if (unitCostInput && (!unitCostInput.value || unitCostInput.value === '0')) {
-        unitCostInput.value = this.formatNumberWithCommas(targetProd.cost || 0);
+      let matched = null;
+      if (currentSku === 'bl') {
+        matched = (this.data.products || []).find(p => p && p.sku && p.sku.toLowerCase().trim() === 'bl' && p.name && p.name.toLowerCase().trim() === valLower);
+      } else {
+        matched = (this.data.products || []).find(p => p && p.sku && p.sku.toLowerCase().trim() === currentSku);
       }
-
-      if (catSelect && targetProd.category) {
-        catSelect.value = targetProd.category;
-      }
-
-      const isUnidades = (targetProd.measureType || 'Pesaje') === 'Unidades';
-      if (measureSelect) {
-        measureSelect.value = isUnidades ? 'Unidades' : 'Pesaje';
-      }
-
-      if (gramsInput) {
-        if (isUnidades) {
-          const val = targetProd.pieceWeight !== undefined && targetProd.pieceWeight !== null ? targetProd.pieceWeight : (targetProd.weight || 0);
-          gramsInput.value = val > 0 ? this.formatNumberWithCommas(val, true) : '';
-        } else {
-          gramsInput.value = '';
+      if (matched && matched.name && matched.name.toLowerCase().trim() === valLower) {
+        if (hiddenId) hiddenId.value = matched.id;
+        if (catInfo) catInfo.textContent = `Reabastecer: ${matched.name} (${matched.categoryName || matched.category})`;
+      } else if (matched && currentSku !== 'bl') {
+        if (hiddenId) hiddenId.value = '';
+        if (catInfo) {
+          catInfo.innerHTML = `<span style="color:#DC2626; font-weight:700;">⚠️ El código "${this.escapeHtml(skuInput.value.trim())}" ya pertenece a "${this.escapeHtml(matched.name)}"</span>`;
         }
-      }
-
-      if (catInfo) {
-        catInfo.textContent = `Categoría: ${targetProd.categoryName || targetProd.category || 'General'}`;
+      } else {
+        if (hiddenId) hiddenId.value = '';
+        const catObj = catSelect ? (this.data.categories || []).find(c => c.id === catSelect.value) : null;
+        if (catInfo) catInfo.textContent = `Nuevo Producto ${catObj ? `(${catObj.name})` : ''}`;
       }
     } else {
       if (hiddenId) hiddenId.value = '';
-      if (catInfo) {
-        const catObj = catSelect ? (this.data.categories || []).find(c => c.id === catSelect.value) : null;
-        catInfo.textContent = `Nuevo Producto ${catObj ? `(${catObj.name})` : ''}`;
-      }
+      const catObj = catSelect ? (this.data.categories || []).find(c => c.id === catSelect.value) : null;
+      if (catInfo) catInfo.textContent = `Nuevo Producto ${catObj ? `(${catObj.name})` : ''}`;
     }
 
-    this.onPurchaseMeasureTypeChange();
+    this.updatePurchaseCalculations();
   }
 
   updatePurchaseCalculations() {
     const measureSelect = document.getElementById('po-measure-type');
     const isPesaje = (measureSelect?.value || 'Pesaje') === 'Pesaje';
+    const catSelect = document.getElementById('po-category-select');
+    const catObj = catSelect ? (this.data.categories || []).find(c => c.id === catSelect.value || c.name === catSelect.value) : null;
+    const isExtras = Boolean(catObj && (catObj.type === 'extras' || catObj.isExtra));
 
     const quantity = this.parseCleanNumber(document.getElementById('po-quantity')?.value);
     const unitCost = this.parseCleanNumber(document.getElementById('po-unit-cost')?.value);
-    const pieceGrams = this.parseCleanNumber(document.getElementById('po-product-grams')?.value);
+    const pieceGrams = isExtras ? 0 : this.parseCleanNumber(document.getElementById('po-product-grams')?.value);
+
+    const costLabel = document.getElementById('po-unit-cost-label');
+    if (costLabel && !isPesaje) {
+      costLabel.textContent = (!isExtras && pieceGrams > 0) ? 'Costo por gramo ($) *' : 'Costo unitario ($) *';
+    }
 
     let totalGrams = 0;
-    if (isPesaje) {
-      totalGrams = quantity;
-    } else {
-      totalGrams = pieceGrams > 0 ? Math.round(quantity * pieceGrams * 100) / 100 : 0;
+    if (!isExtras) {
+      if (isPesaje) {
+        totalGrams = quantity;
+      } else {
+        totalGrams = pieceGrams > 0 ? Math.round(quantity * pieceGrams * 100) / 100 : 0;
+      }
     }
 
     const totalCost = totalGrams > 0 ? Math.round(totalGrams * unitCost) : Math.round(quantity * unitCost);
@@ -4172,10 +4485,10 @@ class NexusApp {
       totalPreview.textContent = this.formatCurrency(totalCost);
     }
     if (gramsPreview) {
-      if (isPesaje) {
+      if (isPesaje && !isExtras) {
         gramsPreview.textContent = `${this.formatNumberWithCommas(totalGrams, true)} g`;
       } else {
-        gramsPreview.textContent = pieceGrams > 0 
+        gramsPreview.textContent = (!isExtras && pieceGrams > 0)
           ? `${this.formatNumberWithCommas(totalGrams, true)} g (${this.formatNumberWithCommas(quantity)} u.)`
           : `${this.formatNumberWithCommas(quantity)} u.`;
       }
@@ -4702,8 +5015,9 @@ class NexusApp {
   populateProductCategorySelect(selectId, selectedVal = '') {
     const select = document.getElementById(selectId);
     if (!select) return;
+    const effectiveSelected = selectedVal || select.value || '';
     select.innerHTML = (this.data.categories || []).map(cat => {
-      return `<option value="${this.escapeHtml(cat.id)}" ${cat.id === selectedVal || cat.name === selectedVal ? 'selected' : ''}>${this.escapeHtml(cat.name)}</option>`;
+      return `<option value="${this.escapeHtml(cat.id)}" ${cat.id === effectiveSelected || cat.name === effectiveSelected ? 'selected' : ''}>${this.escapeHtml(cat.name)}</option>`;
     }).join('');
   }
 
@@ -4721,8 +5035,14 @@ class NexusApp {
     const cat = (this.data?.categories || []).find(c => c.id === catSelect.value || c.name === catSelect.value);
     if (!cat) return;
 
+    const currentCostVal = this.parseCleanNumber(costInput?.value);
+    const canAutoUpdateCost = prefix === 'new'
+      ? (!costInput?.value || currentCostVal === 0 || (this._lastAutoFilledCostNew !== null && this._lastAutoFilledCostNew !== undefined && currentCostVal === this._lastAutoFilledCostNew))
+      : (!costInput?.value || currentCostVal === 0);
+
     const isExtras = cat.type === 'extras' || cat.isExtra;
     if (isExtras) {
+      if (prefix === 'new') this._lastCategoryWasExtrasNew = true;
       if (measureSelect) {
         measureSelect.value = 'Unidades';
         this.onMeasureTypeChange(prefix);
@@ -4733,8 +5053,9 @@ class NexusApp {
         pieceWeightInput.value = '0';
       }
       if (stockGrid) stockGrid.style.gridTemplateColumns = '1fr';
-      if (cat.cost && costInput && (!costInput.value || this.parseCleanNumber(costInput.value) === 0)) {
+      if (cat.cost && costInput && canAutoUpdateCost) {
         costInput.value = this.formatNumberWithCommas(cat.cost);
+        if (prefix === 'new') this._lastAutoFilledCostNew = Number(cat.cost) || 0;
         this.updateProductCostProfitPreview(prefix);
       }
       if (hintEl) {
@@ -4743,11 +5064,23 @@ class NexusApp {
       return;
     }
 
-    if (cat.cost) {
-      if (costInput && (!costInput.value || this.parseCleanNumber(costInput.value) === 0)) {
-        costInput.value = this.formatNumberWithCommas(cat.cost);
-        this.updateProductCostProfitPreview(prefix);
+    if (prefix === 'new' && this._lastCategoryWasExtrasNew) {
+      this._lastCategoryWasExtrasNew = false;
+      if (measureSelect) {
+        measureSelect.value = 'Pesaje';
       }
+    }
+    this.onMeasureTypeChange(prefix);
+
+    if (costInput && canAutoUpdateCost) {
+      if (cat.cost && Number(cat.cost) > 0) {
+        costInput.value = this.formatNumberWithCommas(cat.cost);
+        if (prefix === 'new') this._lastAutoFilledCostNew = Number(cat.cost) || 0;
+      } else if (prefix === 'new' && this._lastAutoFilledCostNew) {
+        costInput.value = '';
+        this._lastAutoFilledCostNew = 0;
+      }
+      this.updateProductCostProfitPreview(prefix);
     }
   }
 
@@ -4764,6 +5097,8 @@ class NexusApp {
   openAddProductModal() {
     const addForm = document.getElementById('add-product-form');
     if (addForm) addForm.reset();
+    this._lastAutoFilledCostNew = null;
+    this._lastCategoryWasExtrasNew = false;
     const measureSelect = document.getElementById('new-prod-measure-type');
     if (measureSelect) measureSelect.value = 'Pesaje';
     const weightSelect = document.getElementById('new-prod-weight-unit');
@@ -4774,8 +5109,9 @@ class NexusApp {
     if (costInput) costInput.value = '';
     const stockInput = document.getElementById('new-prod-stock');
     if (stockInput) stockInput.value = '';
-    this.populateProductCategorySelect('new-prod-cat');
-    this.populateProductSupplierSelect('new-prod-supplier');
+    const defaultMetalCat = (this.data.categories || []).find(c => c.type !== 'extras' && !c.isExtra) || (this.data.categories || [])[0];
+    this.populateProductCategorySelect('new-prod-cat', defaultMetalCat ? defaultMetalCat.id : '');
+    this.populateProductSupplierSelect('new-prod-supplier', 'ANONIMO');
     this.onMeasureTypeChange('new');
     this.onProductCategoryChange('new');
     this.updateProductCostProfitPreview('new');
@@ -4969,7 +5305,7 @@ class NexusApp {
 
       let calculatedAvgCost = Number(cat.cost) || 0;
       if (isUnidades) {
-        if (totalUnitsInProds > 0) calculatedAvgCost = Math.round((totalCostInProds / totalUnitsInProds) * 100) / 100;
+        if (totalUnitsInProds > 0 && totalCostInProds > 0) calculatedAvgCost = Math.round((totalCostInProds / totalUnitsInProds) * 100) / 100;
       } else if (availableGrams > 0 && totalCostInProds > 0) {
         calculatedAvgCost = Math.round((totalCostInProds / availableGrams) * 100) / 100;
       }
@@ -5056,6 +5392,13 @@ class NexusApp {
     const cat = (this.data.categories || []).find(c => c.id === id);
     if (!cat) return;
     cat.cost = Math.max(0, Math.round(((cat.cost || 0) + delta) * 100) / 100);
+    if (cat.cost > 0) {
+      (this.data.products || []).forEach(p => {
+        if (p && (p.category === cat.id || p.categoryName === cat.name)) {
+          p.cost = cat.cost;
+        }
+      });
+    }
     await this.savePersistence();
     this.syncAllModules();
     this.showToast(`Costo de "${cat.name}": ${this.formatCurrency(cat.cost)} (${delta > 0 ? '+' : ''}${this.formatCurrency(delta)})`, 'info');
@@ -5796,20 +6139,22 @@ class NexusApp {
     if (!confirm(`¿Estás seguro de eliminar la categoría "${catName}"? Los productos asociados se reasignarán a la categoría principal.`)) return;
 
     // Reasignar productos asociados a la categoría fallback principal para no perder existencias ni trazabilidad de gramos
-    const isExtras = cat && (cat.type === 'extras' || cat.isExtra);
+    const isExtras = Boolean(cat && (cat.type === 'extras' || cat.isExtra));
     const fallbackCat = isExtras
       ? ((this.data.categories || []).find(c => c.id !== id && (c.type === 'extras' || c.isExtra)) || (this.data.categories || []).find(c => c.id !== id))
-      : ((this.data.categories || []).find(c => c.id !== id && (c.id === 'oro18k' || c.name.toLowerCase().includes('oro'))) || (this.data.categories || []).find(c => c.id !== id));
+      : ((this.data.categories || []).find(c => c.id !== id && c.type !== 'extras' && !c.isExtra) || (this.data.categories || []).find(c => c.id !== id));
     if (fallbackCat) {
+      const isFallbackExtras = Boolean(fallbackCat.type === 'extras' || fallbackCat.isExtra);
       const prodsToReassign = (this.data.products || []).filter(p => p.category === id || p.categoryName === catName);
       if (prodsToReassign.length > 0) {
         let movedGrams = 0;
         prodsToReassign.forEach(p => {
           p.category = fallbackCat.id;
           p.categoryName = fallbackCat.name;
+          p.isExtra = isFallbackExtras;
           movedGrams += this.getGramsFromProduct(p);
         });
-        if (!isExtras && fallbackCat.type !== 'extras' && !fallbackCat.isExtra) {
+        if (!isExtras && !isFallbackExtras) {
           const catGrams = Number(cat?.availableGrams) || movedGrams;
           fallbackCat.availableGrams = Math.round(((fallbackCat.availableGrams || 0) + catGrams) * 100) / 100;
         }
@@ -5895,28 +6240,71 @@ class NexusApp {
       }
     }
 
-    // 2. REVERTIR STOCK DEL PRODUCTO
-    const targetProd = (this.data.products || []).find(p => p.id === po.productId || (po.productSku && p.sku === po.productSku));
+    // 2. REVERTIR STOCK DEL PRODUCTO (Prioridad estricta: productId -> productSku)
+    let targetProd = null;
+    if (po.productId) {
+      targetProd = (this.data.products || []).find(p => p && String(p.id) === String(po.productId));
+    }
+    if (!targetProd && po.productSku) {
+      const cleanSku = String(po.productSku).trim().toLowerCase();
+      const cleanName = String(po.productName || '').trim().toLowerCase();
+      if (cleanSku === 'bl' && cleanName) {
+        targetProd = (this.data.products || []).find(p => p && String(p.sku || '').trim().toLowerCase() === 'bl' && String(p.name || '').trim().toLowerCase() === cleanName);
+      } else {
+        targetProd = (this.data.products || []).find(p => p && String(p.sku || '').trim().toLowerCase() === cleanSku);
+      }
+    }
+
     const qtyToRevert = Number(po.quantity !== undefined ? po.quantity : (po.itemsCount || 1)) || 0;
     if (targetProd && qtyToRevert > 0) {
       const currentStock = this.parseCleanNumber(targetProd.stock) || 0;
       targetProd.stock = Math.round(Math.max(0, currentStock - qtyToRevert) * 100) / 100;
       const minStock = targetProd.minStock !== undefined ? targetProd.minStock : 1;
       targetProd.status = targetProd.stock > minStock ? 'active' : (targetProd.stock > 0 ? 'low_stock' : 'out_of_stock');
+      if (!this._manualStockOverrideIds) this._manualStockOverrideIds = new Set();
+      this._manualStockOverrideIds.add(String(targetProd.id));
+    }
+    if (this.data.kpis && Array.isArray(this.data.products)) {
+      this.data.kpis.inventoryValue = Math.round(this.data.products.reduce((acc, p) => acc + (this.getProductTotalCost(p) || 0), 0) * 100) / 100;
     }
     this.syncAllCategoryGrams();
 
-    // 3. REVERTIR CRÉDITOS Y DEUDAS DE PROVEEDORES
+    // 3. REVERTIR CRÉDITOS Y DEUDAS DE PROVEEDORES (Individuales o Consolidados)
+    const poTotal = Number(po.total) || 0;
+    const poPaid = Number(po.paidAmount) || 0;
+    const poUnpaid = Math.max(0, Math.round((poTotal - poPaid) * 100) / 100);
+
     if (Array.isArray(this.data.supplierCredits)) {
-      const relatedCredits = this.data.supplierCredits.filter(c => c.poId === po.id || c.id === po.id);
-      relatedCredits.forEach(cred => {
-        const suppObj = (this.data.suppliers || []).find(s => s.name?.toLowerCase().trim() === cred.supplier?.toLowerCase().trim());
-        if (suppObj) {
-          const pendingToDeduct = Number(cred.pendingAmount) || 0;
-          suppObj.creditBalance = Math.round(Math.max(0, (Number(suppObj.creditBalance) || 0) - pendingToDeduct) * 100) / 100;
+      const suppNorm = (po.supplier || '').toLowerCase().trim();
+      const updatedCredits = [];
+      this.data.supplierCredits.forEach(cred => {
+        if (!cred) return;
+        const hasPoInList = Array.isArray(cred.purchaseOrderIds) && cred.purchaseOrderIds.includes(po.id);
+        const isDirectMatch = cred.poId === po.id || cred.id === po.id;
+        const isSameSuppActive = suppNorm && (cred.supplier || '').toLowerCase().trim() === suppNorm && cred.status !== 'Pagado Total' && poUnpaid > 0;
+
+        if (isDirectMatch || hasPoInList || isSameSuppActive) {
+          if (Array.isArray(cred.purchaseOrderIds)) {
+            cred.purchaseOrderIds = cred.purchaseOrderIds.filter(pid => pid !== po.id);
+          }
+          if (poUnpaid > 0) {
+            cred.totalOwed = Math.round(Math.max(0, (Number(cred.totalOwed) || 0) - poTotal) * 100) / 100;
+            cred.pendingAmount = Math.round(Math.max(0, (Number(cred.pendingAmount) || 0) - poUnpaid) * 100) / 100;
+          }
+          const suppObj = (this.data.suppliers || []).find(s => s.name?.toLowerCase().trim() === (cred.supplier || po.supplier || '').toLowerCase().trim());
+          if (suppObj && poUnpaid > 0) {
+            suppObj.creditBalance = Math.round(Math.max(0, (Number(suppObj.creditBalance) || 0) - poUnpaid) * 100) / 100;
+          }
+          const remainingPOs = Array.isArray(cred.purchaseOrderIds) ? cred.purchaseOrderIds.length : 0;
+          if (cred.pendingAmount > 0 || remainingPOs > 0) {
+            if (cred.pendingAmount <= 0) cred.status = 'Pagado Total';
+            updatedCredits.push(cred);
+          }
+        } else {
+          updatedCredits.push(cred);
         }
       });
-      this.data.supplierCredits = this.data.supplierCredits.filter(c => c.poId !== po.id && c.id !== po.id);
+      this.data.supplierCredits = updatedCredits;
     }
 
     // 4. ELIMINAR LA ORDEN DE COMPRA
@@ -9447,11 +9835,24 @@ class NexusApp {
 
     items.forEach(item => {
       const soldQty = Number(item.qty || item.quantity) || 1;
-      let prod = (this.data.products || []).find(p => 
-        (item.id && p.id === item.id) || 
-        (item.sku && p.sku && String(p.sku).trim() === String(item.sku).trim()) ||
-        (item.name && p.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase())
-      );
+      const productsList = this.data.products || [];
+      let prod = null;
+      if (item.id) {
+        prod = productsList.find(p => p && String(p.id) === String(item.id));
+      }
+      if (!prod && item.sku) {
+        const cleanSku = String(item.sku).trim().toLowerCase();
+        const cleanName = String(item.name || '').trim().toLowerCase();
+        if (cleanSku === 'bl' && cleanName) {
+          prod = productsList.find(p => p && String(p.sku || '').trim().toLowerCase() === 'bl' && String(p.name || '').trim().toLowerCase() === cleanName);
+        } else {
+          prod = productsList.find(p => p && String(p.sku || '').trim().toLowerCase() === cleanSku);
+        }
+      }
+      if (!prod && !item.id && !item.sku && item.name) {
+        const cleanName = String(item.name).trim().toLowerCase();
+        prod = productsList.find(p => p && String(p.name || '').trim().toLowerCase() === cleanName);
+      }
 
       if (prod) {
         const isPesaje = (prod.measureType || 'Pesaje') === 'Pesaje';
@@ -9468,18 +9869,40 @@ class NexusApp {
 
         restoredNames.push(`${prod.name} (SKU: ${prod.sku || prod.id})`);
       } else {
-        // Si el producto fue borrado, recrearlo en el inventario con su código y datos originales
+        // Si el producto fue borrado, recrearlo en el inventario con su código, categoría y costo originales
+        const fallbackMetalCat = (this.data.categories || []).find(c => c.type !== 'extras' && !c.isExtra) || (this.data.categories || [])[0];
+        const matchedCat = (this.data.categories || []).find(c =>
+          (item.category && (c.id === item.category || c.name === item.category)) ||
+          (item.categoryName && (c.name === item.categoryName || c.id === item.categoryName))
+        ) || fallbackMetalCat;
+        const resolvedCatId = matchedCat ? matchedCat.id : (item.category || 'cat-nacional');
+        const resolvedCatName = matchedCat ? matchedCat.name : (item.categoryName || 'Nacional');
+        const isRestoredExtra = item.isExtra !== undefined ? Boolean(item.isExtra) : Boolean(matchedCat && (matchedCat.type === 'extras' || matchedCat.isExtra));
+        const restoredMeasure = item.measureType || (isRestoredExtra ? 'Unidades' : 'Pesaje');
+        const restoredPieceWeight = Number(item.pieceWeight) || 0;
+        const restoredStock = restoredMeasure === 'Pesaje'
+          ? soldQty
+          : (Number(item.unitsDeducted) || (restoredPieceWeight > 0 ? Math.max(1, Math.round(soldQty / restoredPieceWeight)) : Math.max(1, Math.round(soldQty))));
+        const restoredId = item.id || this.generateUniqueId('PRD', this.data.products);
+
+        if (this._deletedProductIds) this._deletedProductIds.delete(String(restoredId));
+        if (Array.isArray(this.data.deletedProductIds)) {
+          this.data.deletedProductIds = this.data.deletedProductIds.filter(dId => String(dId) !== String(restoredId));
+        }
+
         const restoredProd = {
-          id: item.id || this.generateUniqueId('PRD', this.data.products),
+          id: restoredId,
           sku: item.sku || '',
           name: item.name || 'Joya Reintegrada',
-          measureType: item.measureType || 'Pesaje',
-          pieceWeight: Number(item.pieceWeight) || 0,
-          weight: Number(item.pieceWeight) || 0,
-          category: item.category || 'general',
-          categoryName: item.categoryName || 'GENERAL',
+          measureType: restoredMeasure,
+          pieceWeight: restoredPieceWeight,
+          weight: restoredPieceWeight,
+          category: resolvedCatId,
+          categoryName: resolvedCatName,
+          isExtra: isRestoredExtra,
+          cost: Number(item.cost) || Number(matchedCat?.cost) || 0,
           price: Number(item.price) || 0,
-          stock: soldQty,
+          stock: restoredStock,
           minStock: 1,
           status: 'active',
           sold30d: 0
@@ -9963,66 +10386,81 @@ class NexusApp {
 
   async markPurchaseAsPaid(poId) {
     const po = (this.data.purchases || []).find(p => p.id === poId);
-    if (!po) return;
+    if (!po || po.paymentStatus === 'Pagado Total') return;
+
+    const poTotal = Number(po.total) || 0;
+    const prevPaid = Number(po.paidAmount) || 0;
+    const remainingToPay = Math.max(0, Math.round((poTotal - prevPaid) * 100) / 100);
 
     po.paymentStatus = 'Pagado Total';
     if (!po.paymentMethod || po.paymentMethod === 'Crédito Proveedor') {
       po.paymentMethod = 'Transferencia';
     }
-    po.paidAmount = po.total;
+    po.paidAmount = poTotal;
 
-    // Si se paga en efectivo de caja, reflejar en el arqueo y registrar abono
+    // Si se paga en efectivo de caja, reflejar en el arqueo y registrar abono por el saldo restante
     const isCash = (po.paymentMethod || '').toLowerCase().includes('efectivo');
-    if (isCash) {
+    if (isCash && remainingToPay > 0) {
       if (!this.data.cashShiftLog) {
         this.data.cashShiftLog = { openingCash: 0, cashSales: 0, cashExpenses: 0, expectedCashInDrawer: 0, status: 'Abierto' };
       }
-      this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + po.total) * 100) / 100;
+      this.data.cashShiftLog.cashExpenses = Math.round(((Number(this.data.cashShiftLog.cashExpenses) || 0) + remainingToPay) * 100) / 100;
       this.data.cashShiftLog.expectedCashInDrawer = Math.round(((Number(this.data.cashShiftLog.openingCash) || 0) + (Number(this.data.cashShiftLog.cashSales) || 0) - (Number(this.data.cashShiftLog.cashExpenses) || 0)) * 100) / 100;
       if (this.data.store) {
         this.data.store.cashInBox = this.data.cashShiftLog.expectedCashInDrawer;
       }
-
-      // Los pagos a proveedores no son gastos operativos: son egresos de caja y van en abonosCompras
     }
 
     const activeShift = this.data.cashShiftLog && this.data.cashShiftLog.status === 'Abierto' ? this.data.cashShiftLog : null;
     const now = new Date();
-    if (!this.data.abonosCompras) this.data.abonosCompras = [];
-    this.data.abonosCompras.unshift({
-      id: this.generateSequentialId('AB-C', this.data.abonosCompras),
-      date: now.toISOString().slice(0, 10),
-      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      timestamp: now.getTime(),
-      shiftId: activeShift ? activeShift.shiftId : null,
-      supplier: po.supplier,
-      poId: po.id,
-      amount: po.total,
-      method: isCash ? `${po.paymentMethod || 'Efectivo'} (Caja)` : (po.paymentMethod || 'Transferencia'),
-      cashier: this.data.store?.cashier || (this.currentUser ? this.currentUser.name : "Cajero"),
-      status: "Confirmado"
-    });
+    if (remainingToPay > 0) {
+      if (!this.data.abonosCompras) this.data.abonosCompras = [];
+      this.data.abonosCompras.unshift({
+        id: this.generateSequentialId('AB-C', this.data.abonosCompras),
+        date: now.toISOString().slice(0, 10),
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: now.getTime(),
+        shiftId: activeShift ? activeShift.shiftId : null,
+        supplier: po.supplier,
+        poId: po.id,
+        amount: remainingToPay,
+        method: isCash ? `${po.paymentMethod || 'Efectivo'} (Caja)` : (po.paymentMethod || 'Transferencia'),
+        cashier: this.data.store?.cashier || (this.currentUser ? this.currentUser.name : "Cajero"),
+        status: "Confirmado"
+      });
+    }
 
-    // Si tiene un crédito asociado en supplierCredits, marcarlo saldado
-    if (this.data.supplierCredits) {
-      const cred = this.data.supplierCredits.find(c => c.id === po.id || (c.supplier?.toLowerCase().trim() === po.supplier?.toLowerCase().trim() && c.totalOwed === po.total));
+    // Si tiene un crédito asociado en supplierCredits (individual o consolidado), amortizar el saldo restante
+    if (Array.isArray(this.data.supplierCredits) && remainingToPay > 0) {
+      const suppNorm = (po.supplier || '').toLowerCase().trim();
+      const cred = this.data.supplierCredits.find(c =>
+        c && (
+          c.id === po.id ||
+          c.poId === po.id ||
+          (Array.isArray(c.purchaseOrderIds) && c.purchaseOrderIds.includes(po.id)) ||
+          (suppNorm && (c.supplier || '').toLowerCase().trim() === suppNorm && c.status !== 'Pagado Total')
+        )
+      );
       if (cred) {
-        cred.pendingAmount = 0;
-        cred.paidAmount = po.total;
-        cred.status = 'Pagado Total';
+        cred.pendingAmount = Math.round(Math.max(0, (Number(cred.pendingAmount) || 0) - remainingToPay) * 100) / 100;
+        cred.paidAmount = Math.round(((Number(cred.paidAmount) || 0) + remainingToPay) * 100) / 100;
+        if (cred.pendingAmount <= 0) {
+          cred.pendingAmount = 0;
+          cred.status = 'Pagado Total';
+        }
       }
     }
 
     const suppObj = (this.data.suppliers || []).find(s => s.name?.toLowerCase().trim() === po.supplier?.toLowerCase().trim());
-    if (suppObj) {
-      suppObj.creditBalance = Math.round(Math.max(0, (Number(suppObj.creditBalance) || 0) - po.total) * 100) / 100;
+    if (suppObj && remainingToPay > 0) {
+      suppObj.creditBalance = Math.round(Math.max(0, (Number(suppObj.creditBalance) || 0) - remainingToPay) * 100) / 100;
     }
 
     await this.savePersistence();
     this.syncAllModules();
     this.renderCuadreCajaCard();
     this.renderCashStatusIndicator();
-    this.showToast(`Orden #${po.id} marcada como Pagada Total y descontada de caja`, 'success');
+    this.showToast(`Orden #${po.id} marcada como Pagada Total`, 'success');
     this.showPurchaseReceiptModal(po.id);
   }
 
@@ -10422,20 +10860,20 @@ class NexusApp {
       let totalValuation = 0;
       if (isExtras) {
         const units = count > 0 ? totalUnits : (cat.availableUnits || 0);
-        avgCost = (count > 0 && totalUnits > 0) ? (prodsTotalCost / totalUnits) : (Number(cat.cost) || 0);
+        avgCost = (count > 0 && totalUnits > 0 && prodsTotalCost > 0) ? (prodsTotalCost / totalUnits) : (Number(cat.cost) || 0);
         avgCost = Math.round(avgCost * 100) / 100;
         cat.cost = avgCost;
         cat.availableGrams = 0;
         totalValuation = Math.round((prodsTotalCost > 0 ? prodsTotalCost : (units * avgCost)) * 100) / 100;
         cat.totalValuation = totalValuation;
       } else if (isUnidades) {
-        avgCost = totalUnits > 0 ? (prodsTotalCost / totalUnits) : (Number(cat.cost) || 0);
+        avgCost = (totalUnits > 0 && prodsTotalCost > 0) ? (prodsTotalCost / totalUnits) : (Number(cat.cost) || 0);
         avgCost = Math.round(avgCost * 100) / 100;
         cat.cost = avgCost;
         totalValuation = Math.round((prodsTotalCost > 0 ? prodsTotalCost : (formattedGrams * avgCost)) * 100) / 100;
         cat.totalValuation = totalValuation;
       } else {
-        avgCost = formattedGrams > 0 ? (prodsTotalCost / formattedGrams) : (Number(cat.cost) || 0);
+        avgCost = (formattedGrams > 0 && prodsTotalCost > 0) ? (prodsTotalCost / formattedGrams) : (Number(cat.cost) || 0);
         avgCost = Math.round(avgCost * 100) / 100;
         cat.cost = avgCost;
         totalValuation = Math.round((prodsTotalCost > 0 ? prodsTotalCost : (formattedGrams * avgCost)) * 100) / 100;
@@ -10941,8 +11379,16 @@ class NexusApp {
     if (!p) return;
     if (!confirm(`¿Está seguro de eliminar el producto "${p.name}"? Esta acción no se puede deshacer.`)) return;
 
+    const delIdStr = String(id);
     if (!this._deletedProductIds) this._deletedProductIds = new Set();
-    this._deletedProductIds.add(String(id));
+    this._deletedProductIds.add(delIdStr);
+    if (!Array.isArray(this.data.deletedProductIds)) this.data.deletedProductIds = [];
+    if (!this.data.deletedProductIds.includes(delIdStr)) {
+      this.data.deletedProductIds.push(delIdStr);
+      if (this.data.deletedProductIds.length > 200) {
+        this.data.deletedProductIds = this.data.deletedProductIds.slice(-200);
+      }
+    }
     this.data.products = this.data.products.filter(item => item.id !== id);
     this.syncAllCategoryGrams();
     this.cart = this.cart.filter(item => item.product.id !== id);
@@ -25976,12 +26422,14 @@ class NexusApp {
   populateCheckoutCustomerSelect() {
     const select = document.getElementById('checkout-customer-select');
     if (!select) return;
-    const defaultOpt = `<option value="Cliente Mostrador">👤 Cliente Mostrador (General)</option>`;
-    const custOptions = this.data.customers.map(c => {
+    const prevSelected = select.value || 'Cliente Mostrador';
+    const defaultOpt = `<option value="Cliente Mostrador" ${prevSelected === 'Cliente Mostrador' ? 'selected' : ''}>👤 Cliente Mostrador (General)</option>`;
+    const custOptions = (this.data.customers || []).map(c => {
       const docType = c.docType || (c.document && c.document.includes('-') ? 'NIT' : 'CC');
       const docStr = c.document ? ` [${docType}: ${this.escapeHtml(c.document)}]` : '';
       const phoneStr = c.phone ? ` - 📞 ${this.escapeHtml(c.phone)}` : '';
-      return `<option value="${this.escapeHtml(c.name)}">${this.escapeHtml(c.name)}${docStr}${phoneStr} - Crédito Pend: ${this.formatCurrency(c.creditBalance)}</option>`;
+      const isSelected = c.name === prevSelected ? 'selected' : '';
+      return `<option value="${this.escapeHtml(c.name)}" ${isSelected}>${this.escapeHtml(c.name)}${docStr}${phoneStr} - Crédito Pend: ${this.formatCurrency(c.creditBalance)}</option>`;
     }).join('');
     select.innerHTML = defaultOpt + custOptions;
   }
@@ -26507,6 +26955,9 @@ class NexusApp {
   }
 
   async processPaymentSuccess() {
+    if (this._isProcessingPayment) return;
+    if (!this.cart || this.cart.length === 0) return;
+
     if (!this.currentUser || !this.hasPermission('pos', null)) {
       this.showToast('Acceso Denegado: Tu rol no tiene permisos para procesar cobros en el Punto de Venta.', 'danger');
       return;
@@ -26517,6 +26968,10 @@ class NexusApp {
       return;
     }
 
+    this._isProcessingPayment = true;
+    const confirmPayBtn = document.getElementById('confirm-payment-btn');
+    if (confirmPayBtn) confirmPayBtn.disabled = true;
+    try {
     const modal = document.getElementById('checkout-modal');
     const subtotal = Math.round(this.getCartSubtotal());
     const tax = Math.round(subtotal * (this.data.store.taxRate / 100));
@@ -26829,6 +27284,10 @@ class NexusApp {
           id: i.product.id,
           sku: i.product.sku || i.product.id || '',
           name: i.product.name,
+          category: i.product?.category || undefined,
+          categoryName: i.product?.categoryName || undefined,
+          isExtra: Boolean(i.product?.isExtra),
+          cost: Number(i.product?.cost) || 0,
           qty: i.qty,
           quantity: i.qty,
           unitsDeducted: i._unitsDeducted || undefined,
@@ -26927,15 +27386,8 @@ class NexusApp {
       customerCreditBalance: cust?.creditBalance
     });
 
-    await this.savePersistence();
-
     this.cart = [];
     this.renderCart();
-    this.syncAllModules();
-    this.renderFinVentasTable();
-    this.renderDashboardRecentSales();
-    this.renderCuadreCajaCard();
-    this.renderRepFinanzas();
 
     const cardVoucherEl = document.getElementById('checkout-card-voucher-input');
     if (cardVoucherEl) cardVoucherEl.value = '';
@@ -26959,7 +27411,19 @@ class NexusApp {
     if (receiptBody) receiptBody.innerHTML = receiptHtml;
     this.openModal('receipt-modal');
 
+    await this.savePersistence();
+
+    this.syncAllModules();
+    this.renderFinVentasTable();
+    this.renderDashboardRecentSales();
+    this.renderCuadreCajaCard();
+    this.renderRepFinanzas();
+
     this.showToast(`¡Venta #${newTxId} (${txPaymentMethod}) completada y guardada!`, 'success');
+    } finally {
+      this._isProcessingPayment = false;
+      if (confirmPayBtn) confirmPayBtn.disabled = false;
+    }
   }
 
   /* --------------------------------------------------------------------------

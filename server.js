@@ -257,6 +257,46 @@ app.post('/api/data', async (req, res) => {
         existingContent = loadLocalDb();
       }
 
+      if (existingContent && Array.isArray(data.products)) {
+        const existingProdIds = new Set((existingContent.products || []).filter(Boolean).map(p => String(p.id)));
+        const clientDeletedSet = new Set(Array.isArray(syncMeta.deletedProductIds) ? syncMeta.deletedProductIds.map(String) : []);
+        const prevDeletedList = Array.isArray(existingContent.deletedProductIds) ? existingContent.deletedProductIds.map(String) : [];
+        const incomingExplicitDeleted = Array.isArray(data.deletedProductIds) ? data.deletedProductIds.map(String) : [];
+
+        // A product is considered deleted if the current request explicitly deleted it,
+        // or if it was previously recorded as deleted AND does not currently exist in existingContent.products
+        const effectiveDeletedProdSet = new Set([
+          ...clientDeletedSet,
+          ...incomingExplicitDeleted,
+          ...prevDeletedList.filter(id => !existingProdIds.has(id))
+        ]);
+
+        data.deletedProductIds = Array.from(effectiveDeletedProdSet).slice(-200);
+
+        // 1. Strip any product that was already deleted in another tab/session
+        const seenProdIds = new Set();
+        data.products = data.products.filter(p => {
+          if (!p || !p.id) return false;
+          const pId = String(p.id);
+          if (effectiveDeletedProdSet.has(pId)) return false;
+          if (seenProdIds.has(pId)) return false;
+          seenProdIds.add(pId);
+          return true;
+        });
+
+        // 2. Preserve newly created products from other tabs that this tab didn't know about yet
+        if (Array.isArray(existingContent.products)) {
+          existingContent.products.forEach(exP => {
+            if (!exP || !exP.id) return;
+            const pId = String(exP.id);
+            if (!seenProdIds.has(pId) && !effectiveDeletedProdSet.has(pId)) {
+              data.products.push(exP);
+              seenProdIds.add(pId);
+            }
+          });
+        }
+      }
+
       if (existingContent && Array.isArray(existingContent.recentTransactions) && Array.isArray(data.recentTransactions)) {
         const deletedTxSet = new Set(Array.isArray(syncMeta.deletedTxIds) ? syncMeta.deletedTxIds.map(String) : []);
         const manualOverrideSet = new Set(Array.isArray(syncMeta.manualStockOverrideIds) ? syncMeta.manualStockOverrideIds.map(String) : []);
