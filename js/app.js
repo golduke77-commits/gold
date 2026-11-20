@@ -805,40 +805,30 @@ class NexusApp {
   syncAllModules() {
     this.syncSupplierCreditsState();
     this.syncAllCategoryGrams();
-    this.renderAllTables();
-    this.renderCategoryPills();
-    const newProdModalOpen = document.getElementById('product-modal')?.classList.contains('open');
-    const editProdModalOpen = document.getElementById('edit-product-modal')?.classList.contains('open');
-    if (!newProdModalOpen) {
-      const currentNewCat = document.getElementById('new-prod-cat')?.value || '';
-      this.populateProductCategorySelect('new-prod-cat', currentNewCat);
-    }
-    if (!editProdModalOpen) {
-      const currentEditCat = document.getElementById('edit-prod-cat')?.value || '';
-      this.populateProductCategorySelect('edit-prod-cat', currentEditCat);
-    }
-    this.renderPOSProducts();
-    this.renderPosMetalRates();
-    if (typeof this.renderCarteraMorosidadTable === 'function') this.renderCarteraMorosidadTable();
-    if (typeof this.renderMorosidadPortfolio === 'function') this.renderMorosidadPortfolio();
-    this.populateTendenciaDatalist();
-    const checkoutModalOpen = document.getElementById('checkout-modal')?.classList.contains('open');
-    this.populateCheckoutCustomerSelect();
-    this.populateCardAccountSelect();
-    this.populateTransferAccountSelect();
-    if (!checkoutModalOpen) {
-      this.syncCheckoutCustomerPaymentMethods();
-    }
-    this.renderDashboardMetrics();
-    this.renderCuadreCajaCard();
     this.renderCashStatusIndicator();
-    if (this.currentSubView === 'inf_tendencia') this.consultarTendencia();
-    if (this.currentSubView === 'inf_radar_stock') this.renderRadarStock();
-    if (this.currentSubView === 'rep_compras') this.renderRepCompras();
-    if (this.currentSubView === 'rep_finanzas') this.renderRepFinanzas();
-    // Only rebuild Chart.js instances when the dashboard is visible — avoids
-    // destroying/recreating 4 charts on every CRUD operation in other modules.
-    if (typeof this.initCharts === 'function' && this.currentSubView === 'inicio') this.initCharts();
+
+    const isPosView = this.currentParentView === 'pos';
+    const sv = this.currentSubView || 'inicio';
+
+    if (isPosView) {
+      this.renderCategoryPills();
+      this.renderPOSProducts();
+      this.renderPosMetalRates();
+      const checkoutModalOpen = document.getElementById('checkout-modal')?.classList.contains('open');
+      this.populateCheckoutCustomerSelect();
+      this.populateCardAccountSelect();
+      this.populateTransferAccountSelect();
+      if (!checkoutModalOpen) {
+        this.syncCheckoutCustomerPaymentMethods();
+      }
+      return;
+    }
+
+    this.renderAllTables();
+
+    if (typeof this.initCharts === 'function' && sv === 'inicio') {
+      this.initCharts();
+    }
   }
 
   getGramsFromProduct(p) {
@@ -2304,11 +2294,21 @@ class NexusApp {
     if (contentBody) contentBody.scrollTop = 0;
 
     this.currentParentView = parentViewId;
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(el => {
+      const itemOnClick = el.getAttribute('onclick') || '';
+      el.classList.toggle('active', itemOnClick.includes(`switchView('${parentViewId}')`));
+    });
     document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
     
     const target = document.getElementById(`view-${parentViewId}`);
     if (target) target.classList.add('active');
+
+    if (parentViewId === 'pos') {
+      this.renderCategoryPills();
+      this.renderPOSProducts();
+      this.renderPosMetalRates();
+      this.renderCart();
+    }
 
     setTimeout(() => {
       if (contentBody) contentBody.scrollTop = 0;
@@ -3788,15 +3788,8 @@ class NexusApp {
           // 5. Guardar persistencia en MongoDB y db.json
           await this.savePersistence();
 
-          // 6. Sincronizar vistas y tablas en toda la aplicación
+          // 6. Sincronizar vista activa (las demás secciones se renderizan bajo demanda al entrar)
           this.syncAllModules();
-          this.renderFinComprasTable();
-          this.renderRepCompras();
-          this.renderInventoryTable();
-          this.renderInvCategoriasTable();
-          this.renderCategoryPills();
-          this.renderDashboardMetrics();
-          this.renderPOSProducts();
 
           const unitLabel = isUnidades ? 'u.' : (targetProd.weightUnit || 'g');
           const gramsMsg = totalGramsAdded > 0 ? `, +${totalGramsAdded}g` : '';
@@ -6955,7 +6948,7 @@ class NexusApp {
     }
 
     const infTopCtx = document.getElementById('infTopProductsChart');
-    if (infTopCtx) {
+    if (infTopCtx && this.currentSubView === 'inf_ventas_producto') {
       this.renderInformesVentasProductoChart();
     }
 
@@ -6976,44 +6969,25 @@ class NexusApp {
   }
 
   /* --------------------------------------------------------------------------
-     TABLE & REPORT RENDERERS (ALL 28 MODULES)
+     TABLE & REPORT RENDERERS (ON-DEMAND BY ACTIVE SECTION)
      -------------------------------------------------------------------------- */
   renderAllTables() {
-    const sv = this.currentSubView;
-    this.renderDashboardMetrics();
-    this.renderUsersTable();
-    this.renderCustomersTable();
-    this.renderSuppliersTable();
-    this.renderPerfilesTable();
-    this.renderExpensesTable();
-    this.renderPaymentMethodsTable();
-    this.renderFinVentasTable();
-    this.renderFinComprasTable();
-    this.renderFinCreditosClientesTable();
-    this.renderFinCreditosProveedoresTable();
-    this.renderInvServiciosTable();
-    this.renderInvCategoriasTable();
-    this.renderInventoryTable();
-    this.renderInvActivosTable();
-    this.renderCuadreCajaCard();
-    this.renderAbonosVentasTable();
-    this.renderAbonosComprasTable();
-    // Heavy financial reports: only render when the user is actually viewing them.
-    // renderSubViewContent() handles rendering them on navigation, so nothing is lost.
-    if (sv === 'rep_finanzas') this.renderRepFinanzas();
-    if (sv === 'rep_compras') this.renderRepCompras();
-    if (sv === 'rep_general') this.renderRepGeneral();
-    if (sv === 'inf_balance') this.renderInformesBalance();
-    if (sv === 'inf_ventas_producto') this.renderInformesVentasProducto();
-    if (sv === 'inf_listado_periodos') this.renderInformesPeriodos();
-    if (sv === 'inf_cartera_clientes') this.renderInformesCarteraClientes();
-    if (sv === 'inf_margen_real') this.renderInformesMargenReal();
-    if (sv === 'inf_radar_stock') this.renderRadarStock();
-    this.renderDashboardRecentSales();
+    if (this.currentParentView === 'pos') {
+      this.renderCategoryPills();
+      this.renderPOSProducts();
+      this.renderPosMetalRates();
+      return;
+    }
+    const sv = this.currentSubView || 'inicio';
+    const pv = this.currentParentView || this.findParentView(sv);
+    this.renderSubViewContent(pv, sv);
   }
 
   renderSubViewContent(parent, sub) {
-    if (sub === 'inicio') this.renderDashboardMetrics();
+    if (sub === 'inicio') {
+      this.renderDashboardMetrics();
+      this.renderDashboardRecentSales();
+    }
     if (sub === 'usuarios') this.renderUsersTable();
     if (sub === 'clientes') this.renderCustomersTable();
     if (sub === 'proveedores') this.renderSuppliersTable();
@@ -7038,9 +7012,17 @@ class NexusApp {
     if (sub === 'inf_ventas_producto') this.renderInformesVentasProducto();
     if (sub === 'inf_listado_periodos') this.renderInformesPeriodos();
     if (sub === 'inf_radar_stock') this.renderRadarStock();
-    if (sub === 'inf_cartera_clientes') this.renderInformesCarteraClientes();
+    if (sub === 'inf_cartera_clientes') {
+      this.renderInformesCarteraClientes();
+      if (typeof this.renderCarteraMorosidadTable === 'function') this.renderCarteraMorosidadTable();
+      if (typeof this.renderMorosidadPortfolio === 'function') this.renderMorosidadPortfolio();
+    }
     if (sub === 'inf_margen_real') this.renderInformesMargenReal();
-    if (sub === 'inf_tendencia') this.renderTendenciaProducto();
+    if (sub === 'inf_tendencia') {
+      this.populateTendenciaDatalist();
+      this.renderTendenciaProducto();
+      this.consultarTendencia();
+    }
     if (sub === 'config') this.setupConfigForm();
   }
 
@@ -25297,8 +25279,11 @@ class NexusApp {
      POS CASHIER SYSTEM
      -------------------------------------------------------------------------- */
   setupPOS() {
-    this.renderCategoryPills();
-    this.renderPOSProducts();
+    if (this.currentParentView === 'pos') {
+      this.renderCategoryPills();
+      this.renderPOSProducts();
+      this.renderPosMetalRates();
+    }
     this.renderCart();
 
     const searchInput = document.getElementById('pos-product-search');
@@ -27414,10 +27399,6 @@ class NexusApp {
     await this.savePersistence();
 
     this.syncAllModules();
-    this.renderFinVentasTable();
-    this.renderDashboardRecentSales();
-    this.renderCuadreCajaCard();
-    this.renderRepFinanzas();
 
     this.showToast(`¡Venta #${newTxId} (${txPaymentMethod}) completada y guardada!`, 'success');
     } finally {
@@ -27430,7 +27411,9 @@ class NexusApp {
      INVENTORY TABLE SEARCH
      -------------------------------------------------------------------------- */
   setupInventory() {
-    this.renderInventoryTable();
+    if (this.currentSubView === 'productos') {
+      this.renderInventoryTable();
+    }
     const searchInput = document.getElementById('inventory-search');
     if (searchInput) {
       searchInput.addEventListener('input', () => this.renderInventoryTable());
