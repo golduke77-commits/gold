@@ -6830,6 +6830,9 @@ class NexusApp {
      -------------------------------------------------------------------------- */
   initCharts() {
     if (typeof Chart === 'undefined') return;
+    if (Chart.defaults) {
+      Chart.defaults.animation = false;
+    }
     const contentBody = document.querySelector('.content-body');
     if (contentBody) contentBody.scrollTop = 0;
 

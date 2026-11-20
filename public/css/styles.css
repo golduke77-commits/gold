@@ -221,9 +221,6 @@ h1, h2, h3, h4, .font-heading {
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
-  /* Promote sidebar to its own compositor layer so width transitions
-     don’t trigger main-thread layout of the content area */
-  will-change: width;
 }
 
 .sidebar-header {
@@ -762,14 +759,7 @@ h1, h2, h3, h4, .font-heading {
   height: 8px;
   background-color: var(--emerald-success);
   border-radius: 50%;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  animation: pulse-green 2s infinite;
-}
-
-@keyframes pulse-green {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.55);
 }
 
 .top-bar-right {
@@ -1066,25 +1056,22 @@ button.subnav-tab.active,
 
 .view-container {
   display: none;
-  animation: fadeIn 0.25s ease-in-out;
+  content-visibility: hidden;
 }
 
 .view-container.active {
   display: block;
+  content-visibility: visible;
 }
 
 .sub-view-pane {
   display: none;
-  animation: fadeIn 0.2s ease-in-out;
+  content-visibility: hidden;
 }
 
 .sub-view-pane.active {
   display: block;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  content-visibility: visible;
 }
 
 .section-header {
@@ -1486,8 +1473,10 @@ button.subnav-tab.active,
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
-  transition: var(--transition-fast);
+  transition: border-color 0.15s ease, transform 0.15s ease;
   min-height: 125px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 130px;
 }
 
 .pos-product-card:hover {
@@ -1970,23 +1959,24 @@ select.form-control, select.form-select {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   opacity: 0;
+  visibility: hidden;
+  content-visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.18s ease, visibility 0.18s ease;
   padding: 1rem;
   overflow-y: auto;
-  /* GPU-composited opacity animation: no layout or paint cost */
-  will-change: opacity;
 }
 
 .modal-backdrop.open {
   opacity: 1;
+  visibility: visible;
+  content-visibility: visible;
   pointer-events: auto;
 }
 
@@ -2002,11 +1992,9 @@ select.form-control, select.form-select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transform: scale(0.95);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: scale(0.97);
+  transition: transform 0.18s ease;
   margin: auto;
-  /* GPU-composited scale animation */
-  will-change: transform;
 }
 
 .modal-card > form {
@@ -3685,6 +3673,8 @@ html, body {
   justify-content: space-between;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 210px;
 }
 
 .radar-card:hover {
@@ -4969,15 +4959,8 @@ html, body {
   border-radius: 50%;
   background: #10B981;
   display: inline-block;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
-  animation: greenPulse 2s infinite;
+  box-shadow: 0 0 5px rgba(16, 185, 129, 0.55);
   flex-shrink: 0;
-}
-
-@keyframes greenPulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1.1); box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 /* Stock Badges de Cantidad en la Tabla de Inventario */
@@ -5295,31 +5278,27 @@ html, body {
   height: 26px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  animation: pulseAiGlow 3s infinite ease-in-out;
-}
-
-@keyframes pulseAiGlow {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
-  50% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
 }
 
 /* Backdrop */
 .nexus-ai-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.68);
   z-index: 1060;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.3s ease;
+  content-visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
 }
 
 .nexus-ai-backdrop.active,
 .nexus-ai-backdrop.open {
   opacity: 1;
   visibility: visible;
+  content-visibility: visible;
+  pointer-events: auto;
 }
 
 /* Slide-Over Drawer */
@@ -5338,12 +5317,16 @@ html, body {
   box-shadow: -10px 0 50px rgba(0, 0, 0, 0.6);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
+  content-visibility: hidden;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s ease;
 }
 
 .nexus-ai-drawer.active,
 .nexus-ai-drawer.open {
   transform: translateX(0);
+  visibility: visible;
+  content-visibility: visible;
 }
 
 /* Header */
@@ -5352,9 +5335,8 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: rgba(30, 41, 59, 0.7);
+  background: #1E293B;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
 }
 
 .nexus-ai-title-wrap {
@@ -5657,9 +5639,8 @@ html, body {
 /* Input Area */
 .nexus-ai-footer {
   padding: 14px 18px;
-  background: rgba(30, 41, 59, 0.85);
+  background: #1E293B;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
 }
 
 .nexus-ai-input-form {
